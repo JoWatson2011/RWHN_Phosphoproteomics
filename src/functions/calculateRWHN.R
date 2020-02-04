@@ -1,3 +1,6 @@
+library(igraph)
+library(dplyr)
+
 calculateRWHN <- function(edgelists, verti, seeds, transitionProb, 
                           restart, weight_xy, weight_yz, eps = 1/10^6,
                           random = F){

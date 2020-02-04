@@ -10,12 +10,12 @@ library(GOSemSim)
 library(AnnotationDbi)
 library(GO.db)
 # From src/
-source("src/mfuzz-ggplot.R")
-source("src/simplifyGO.R")
-source("src/simplifyGOReqData.R")
-source("src/constructHetNet.R")
-source("src/calculateRWHN.R")
-source("src/dotplot_gg.R")
+source("src/functions/mfuzz-ggplot.R")
+source("src/functions/simplifyGO.R")
+source("src/functions/simplifyGOReqData.R")
+source("src/functions/constructHetNet.R")
+source("src/functions/calculateRWHN.R")
+source("src/functions/dotplot_gg.R")
 
 prots <- data.frame(node = c("RAF1", "MAP2K1", "MAP2K2", "MAPK1", "MAPK3", "JUND", "DUSP6", "RPS6KA3"),
                     level = c(1, 2, 2, 3, 3, 4, 5, 5),
@@ -167,7 +167,7 @@ saveRDS(rwhn, "results/data/rwhn_model.rds")
 
 dot <- dotplot_gg(rwhn)
 ggsave(filename = "results/figs/rwhn_model_dotplot.tiff", 
-       plot = dot,
+       plot = dot[[1]],
        width = 209.804,
        height = 142,
        units = "mm")

@@ -1,6 +1,6 @@
 # RWHN_Phosphoproteomics
 A method to infer the function of individual phosphorylation sites based on phosphoproteomics data, using random walks on heterogeneous networks (RWHN).
-![Figure1](figure/figure1.tif?raw=true "Title")
+![Figure1](figure/Figure1.tif?raw=true "Title")
  
 # Data
 Two datasets are included: a toy example dataset and a previously published phosphoproteomics dataset from [Francavilla et al., 2016](https://www.nature.com/articles/nsmb.3218)

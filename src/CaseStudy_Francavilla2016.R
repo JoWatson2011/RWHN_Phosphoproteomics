@@ -10,13 +10,13 @@ library(GOSemSim)
 library(AnnotationDbi)
 library(GO.db)
 # From src/
-source("src/imputePhosphoData.R")
-source("src/mfuzz-ggplot.R")
-source("src/simplifyGO.R")
-source("src/simplifyGOReqData.R")
-source("src/constructHetNet.R")
-source("src/calculateRWHN.R")
-source("src/dotplot_gg.R")
+source("src/functions/imputePhosphoData.R")
+source("src/functions/mfuzz-ggplot.R")
+source("src/functions/simplifyGO.R")
+source("src/functions/simplifyGOReqData.R")
+source("src/functions/constructHetNet.R")
+source("src/functions/calculateRWHN.R")
+source("src/functions/dotplot_gg.R")
 
 # Import data
 cfr_sty <- data.table::fread(input = "data/CFR_STY_2016.csv",
@@ -55,15 +55,15 @@ seed_l <- lapply(1:max(egf_fcm$clustering), function(i){
   c(names(egf_fcm$clustering[egf_fcm$clustering == i]))
 })
 rwhn_egf <- lapply(seed_l, function(s){
-  calculateRWHN(edgelists = edgelists_egf,
-                #verti = v_egf[v_egf$v != "negative regulation of transcription by RNA polymerase II",],
-                verti = v_egf,
+  calculateRWHN(edgelists = egf_mlnw$edgelists,
+                verti = egf_mlnw$v[egf_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
+                #verti = egf_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
                 weight_xy = 0.3,
                 weight_yz = 0.7) %>%
-    filter(name %in% v_egf[v_egf$layer=="func",]$v)
+    filter(name %in% egf_mlnw$v[egf_mlnw$v$layer=="func",]$v)
 })
 saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters.rds")
 
@@ -72,14 +72,14 @@ seed_l <- lapply(1:max(tgf_fcm$clustering), function(i){
   c(names(tgf_fcm$clustering[tgf_fcm$clustering == i]))
 })
 rwhn_tgf <- lapply(seed_l, function(s){
-  calculateRWHN(edgelists = edgelists_tgf,
-                verti = v_tgf,
+  calculateRWHN(edgelists = tgf_mlnw$edgelists,
+                verti = tgf_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
                 weight_xy = 0.3,
                 weight_yz = 0.7) %>%
-    filter(name %in% v_tgf[v_tgf$layer=="func",]$v)
+    filter(name %in% tgf_mlnw$v[tgf_mlnw$v$layer=="func",]$v)
 })
 saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
 

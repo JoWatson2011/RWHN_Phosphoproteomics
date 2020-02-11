@@ -10,19 +10,19 @@ library(GOSemSim)
 library(AnnotationDbi)
 library(GO.db)
 # From src/
-source("src/mfuzz-ggplot.R")
-source("src/simplifyGO.R")
-source("src/simplifyGOReqData.R")
-source("src/constructHetNet.R")
-source("src/calculateRWHN.R")
-source("src/dotplot_gg.R")
+source("src/functions/mfuzz-ggplot.R")
+source("src/functions/simplifyGO.R")
+source("src/functions/simplifyGOReqData.R")
+source("src/functions/constructHetNet.R")
+source("src/functions/calculateRWHN.R")
+source("src/functions/dotplot_gg.R")
 
 # Import multilayer heterogenous network for model data
 mlnw_model <- readRDS("results/data/mlnw_model.rds")
 
 fcm <- mlnw_model$fcm
 v <- mlnw_model$v
-edglists <- mlnw_model$edgelists
+edgelists <- mlnw_model$edgelists
 
 seed_l <- lapply(1:max(fcm$clustering), function(i){
   c(names(fcm$clustering[fcm$clustering == i]))

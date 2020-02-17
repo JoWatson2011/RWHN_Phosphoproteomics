@@ -1,4 +1,7 @@
 dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F){
+  library(dplyr)
+  library(ggplot2)
+  
   ggdf <- lapply(1:length(rwhn), function(i){
     rwhn[[i]] %>% 
       mutate(seed = ifelse(is.null(seed_names),

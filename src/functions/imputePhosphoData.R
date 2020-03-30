@@ -7,10 +7,10 @@ imputeTruncNorm <- function(v){
   return(v)
 }
 
-filter_missing <- function(sty, allowed = 0){
+filter_missing <- function(sty, allowed = 0, colnms){
   keep <- sty %>% 
     group_by(id) %>% 
-    dplyr::select(id, grep("ratio", colnames(.))) %>% 
+    dplyr::select(id, grep(colnms, colnames(.))) %>% 
     pivot_longer(cols = -id, names_to = "experiment", values_to = "value") %>% 
     filter(sum(is.na(value)) <= allowed) %>% 
     dplyr::select(id) %>% 

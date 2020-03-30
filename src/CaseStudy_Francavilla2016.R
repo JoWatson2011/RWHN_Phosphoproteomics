@@ -30,14 +30,21 @@ colnames(cfr_sty) <- gsub(" ", "_", colnames(cfr_sty))
 
 # Filter data with > 2 missing values and
 # impute phosphorylated sites regulated by EGF or TGF-a
+# egf <- cfr_sty %>% 
+#   dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>% 
+#   filter_missing(allowed = 2) %>% 
+#   mutate_at(vars(matches("ratio")), imputeTruncNorm)
+
 egf <- cfr_sty %>% 
-  dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>% 
-  filter_missing(allowed = 2) %>% 
+  dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>%
+  filter_at(vars(matches("ratio")), ~ . > 0.5 | . < -1) %>% 
+  filter_missing(allowed = 2, colnms = "ratio") %>% 
   mutate_at(vars(matches("ratio")), imputeTruncNorm)
+
 
 tgf <- cfr_sty %>% 
   dplyr::select(id, grep("TGF", colnames(cfr_sty))) %>% 
-  filter_missing(allowed = 2) %>% 
+  filter_missing(allowed = 2, colnms = "ratio") %>% 
   mutate_at(vars(matches("ratio")), imputeTruncNorm)
 
 # Cluster based on dynamics of phosphorylated sites

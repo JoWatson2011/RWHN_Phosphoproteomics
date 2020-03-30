@@ -91,10 +91,12 @@ rwhn_tgf <- lapply(seed_l, function(s){
 saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
 
 # visualise results with dot plot
-dot_egf <- dotplot_gg(rwhn_egf_cl)
-ggsave("results/figs/rwhn_egf_clustersAsSeeds.tif", dot_egf)
-dot_tgf <- dotplot_gg(rwhn_tgf_cl)
-ggsave("results/figs/rwhn_tgf_clustersAsSeeds.tif", dot_tgf)
+dot_egf <- dotplot_gg(rwhn_egf,remove_common = T)
+ggsave("results/figs/rwhn_egf_clustersAsSeeds.tiff", dot_egf[[1]])
+dot_tgf <- dotplot_gg(rwhn_tgf,remove_common = T)
+ggsave("results/figs/rwhn_tgf_clustersAsSeeds.tiff", dot_tgf[[1]])
+
+
 
 # To determine the frequency of common sites
 egf_com <- dot_egf[[2]] %>% filter(rank_dif == 0) %>% dplyr::select(egf_rank = rank, name) %>% unique()
@@ -104,5 +106,5 @@ simpl <- simplifyGOReqData()
 freq <- sapply(simpl$GO2Gene,length)
 freq_p <- freq / sum(freq) * 100
 termid <- filter(simpl$GOterms, TERM %in% com$name)
-write.csv(termid, "Table4_commonTermsCFRdata.csv")
+write.csv(termid, "results/data/Table4_commonTermsCFRdata.csv")
 

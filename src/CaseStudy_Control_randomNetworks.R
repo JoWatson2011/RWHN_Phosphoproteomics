@@ -4,6 +4,7 @@ library(tidyr)
 library(igraph)
 library(e1071)
 library(enrichR)
+library(ggplot2)
 # From Bioconductor
 library(Mfuzz)
 library(GOSemSim)

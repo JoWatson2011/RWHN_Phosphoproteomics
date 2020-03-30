@@ -19,9 +19,7 @@ dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F)
       mutate(rank_flt = 1:n()) %>% 
       filter(rank_flt <= n_terms) %>% 
       ungroup() %>% 
-      mutate(V1 = signif(V1, digits = 2)) %>% 
-      mutate(name = factor(name, unique(name)),
-             namecol = "black")
+      mutate(V1 = signif(V1, digits = 2))
   }else{
     ggdf <- ggdf %>% 
       group_by(name) %>% 

@@ -1,7 +1,7 @@
-constructHetNet <- function(stytxt, phosphoData, mfuzz_output, stringPath = "data/STRINGexpmtgene_lowconf.rds", modules = T, GOpval = 0.01){
+constructHetNet <- function(stytxt, phosphoData, clustering, stringPath = "data/STRINGexpmtgene_lowconf.rds", modules = T, GOpval = 0.01){
   ## Phospho
-  phos <- lapply(1:max(mfuzz_output$clustering), function(x){
-    cl <- names(mfuzz_output$clustering[mfuzz_output$clustering == x])
+  phos <- lapply(1:max(clustering), function(x){
+    cl <- names(clustering[clustering == x])
     xpnd <- phosphoData %>% 
       filter(id %in% cl) %>% 
       tibble::column_to_rownames(var = "id") %>% 
@@ -39,9 +39,9 @@ constructHetNet <- function(stytxt, phosphoData, mfuzz_output, stringPath = "dat
   
   ## Protein >> Func
   
-  enrichedTerms <- lapply(1:max(mfuzz_output$clustering), function(i){
-    ids <- names(mfuzz_output$clustering[mfuzz_output$clustering == i ] )
-    cl_prots <- unique(stytxt[stytxt$id %in% ids,]$Gene_names)
+  enrichedTerms <- lapply(1:max(clustering), function(i){
+    ids <- names(clustering[clustering == i ] )
+    cl_prots <- unique(stytxt[stytxt$id %in% ids,]$gene.symbol)
 
     enrichedTerms <- if(modules){
       el <- STRING.expmt.gene %>% 

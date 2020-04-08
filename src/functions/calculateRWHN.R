@@ -5,7 +5,28 @@ calculateRWHN <- function(edgelists, verti, seeds, transitionProb,
                           restart, weight_xy, weight_yz, eps = 1/10^6,
                           random = F){
   
-  heterogenousNetwork <- lapply(edgelists, function(i){
+  inter_el <- lapply(edgelists[c("x", "y", "z")], function(i){
+    nw <- i %>% 
+      graph_from_data_frame(directed = F) %>% simplify
+    
+    if(random){
+      names <- unique(c(i$from, i$to))
+      adj <- matrix(data = sample.int(2,
+                                      length(names)*length(names),
+                                      TRUE), 
+                    nrow = length(names), 
+                    ncol = length(names), 
+                    dimnames = list(names, names)
+      )
+      randomnw <- graph_from_adjacency_matrix(adj)
+      mat <- get.adjacency(randomnw, sparse = T)
+    }else{
+      mat <- get.adjacency(nw, sparse = T, )
+    }
+    return(as.matrix(mat)) 
+  })
+  
+  intra_el <- lapply(edgelists[c("xy", "yx", "yz", "zy")], function(i){
     nw <- i %>% 
       graph_from_data_frame(directed = F) %>% simplify
     bimap <- bipartite.mapping(nw)
@@ -13,11 +34,11 @@ calculateRWHN <- function(edgelists, verti, seeds, transitionProb,
     if(bimap[[1]] == T){
       if(random){
         incd <- matrix(data = sample.int(2,
-                                        length(unique(i$from))*length(unique(i$to)),
-                                        TRUE), 
-                      nrow = length(unique(i$from)), 
-                      ncol = length(unique(i$to)), 
-                      dimnames = list(unique(i$from), unique(i$to))
+                                         length(unique(i$from))*length(unique(i$to)),
+                                         TRUE), 
+                       nrow = length(unique(i$from)), 
+                       ncol = length(unique(i$to)), 
+                       dimnames = list(unique(i$from), unique(i$to))
         )
         randomnw <- graph_from_incidence_matrix(incd)
         bimap_random <- bipartite.mapping(randomnw)
@@ -25,24 +46,11 @@ calculateRWHN <- function(edgelists, verti, seeds, transitionProb,
       }else{
         mat <- get.incidence(nw, types= bimap$type, attr=NULL, names=TRUE, sparse=T)
       }
-    }else{
-      if(random){
-        names <- unique(c(i$from, i$to))
-        adj <- matrix(data = sample.int(2,
-                                         length(names)*length(names),
-                                         TRUE), 
-                       nrow = length(names), 
-                       ncol = length(names), 
-                       dimnames = list(names, names)
-        )
-        randomnw <- graph_from_adjacency_matrix(adj)
-        mat <- get.adjacency(randomnw, sparse = T)
-      }else{
-        mat <- get.adjacency(nw, sparse = T, )
-      }
     }
     return(as.matrix(mat)) 
   })
+  
+  heterogenousNetwork <- c(inter_el, intra_el)
   
   verti$transition <- ifelse(verti$layer == "phos", "x", 
                              ifelse(verti$layer == "prot", "y",

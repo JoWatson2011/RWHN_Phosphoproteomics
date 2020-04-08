@@ -27,75 +27,121 @@ ruprecht_sty <- data.table::fread(input = "data/Ruprecht_STY_2017.csv",
                                         ),
                              skip = 1
 ) %>% 
-  mutate(id = paste0(`Gene names`, "_", `Amino acid` ,`Position`)) %>% 
+  mutate(`Gene names` = gsub(";.*", "", `Gene names`),
+         id = paste0(`Gene names`, "_", `Amino acid` ,`Position`)) %>% 
   filter(!duplicated(id)) %>% 
-  mutate(`Gene names` = gsub(";.*", "", `Gene names`)
-  )
+  rename(`Gene names` = "gene.symbol")
 colnames(ruprecht_sty) <- gsub(" ", "_", colnames(ruprecht_sty))
 
 
-
-# Filter data with > 2 NA in experimental condition
-par_lap <- ruprecht_sty %>% 
+# PARENTAL + LAP M/L: Filter NAs and non significant
+par_lap <- ruprecht_sty %>%
   dplyr::select(id, grep("M/L", colnames(.))) %>%
-  filter(`t-test_SignificantM/L_(FDR_<_1%)` == "+") %>% 
-  filter_missing(allowed = 1,  colnms = "^M/L")
+  filter(`t-test_SignificantM/L_(FDR_<_1%)` == "+" ) %>%
+  na.omit() %>%
+  dplyr::select(-`t-test_SignificantM/L_(FDR_<_1%)`
+  ) %>%
+  pivot_longer(-id,
+               names_to = "rep",
+               values_to = "ratio") %>%
+  mutate(rep = gsub("_R[1234]$", "", rep)) %>%
+  group_by(id, rep) %>%
+  summarise(ratio = median(ratio, na_rm = T)) %>%
+  pivot_wider(id_cols = id,
+              names_from = rep,
+              values_from = ratio)
 
-res_lap <- ruprecht_sty %>% 
+
+# RESISTANT  + LAP H/L: Filter NAs
+par_lap <- ruprecht_sty %>%
   dplyr::select(id, grep("H/L", colnames(.))) %>%
-  filter(`t-test_SignificantH/L_(FDR_<_1%)` == "+") %>% 
-  filter_missing(allowed = 1,  colnms = "^H/L") %>% 
-  mutate_at
+  filter(`t-test_SignificantH/L_(FDR_<_1%)` == "+" ) %>%
+  na.omit() %>%
+  dplyr::select(-`t-test_SignificantH/L_(FDR_<_1%)`
+  ) %>%
+  pivot_longer(-id,
+               names_to = "rep",
+               values_to = "ratio") %>%
+  mutate(rep = gsub("_R[1234]$", "", rep)) %>%
+  group_by(id, rep) %>%
+  summarise(ratio = median(ratio, na_rm = T)) %>%
+  pivot_wider(id_cols = id,
+              names_from = rep,
+              values_from = ratio)
 
+# ALL COND. : Filter data with NA in an experimental condition
+tot_lap <- ruprecht_sty %>%
+  dplyr::select(id, grep("H[M]/L", colnames(.))) %>%
+filter(`t-test_SignificantM/L_(FDR_<_1%)` == "+" |
+        `t-test_SignificantH/L_(FDR_<_1%)` == "+") %>%
+  filter(`t-test_SignificantM/L_(FDR_<_1%)` == "+" ) %>%
+#  filter_missing(allowed = 1,  colnms = "^[M]/L") %>%
+  na.omit() %>%
+  # dplyr::select(-c(`t-test_SignificantM/L_(FDR_<_1%)`,
+  #                  `t-test_SignificantH/L_(FDR_<_1%)`)
+  #               ) %>%
+  dplyr::select(-`t-test_SignificantM/L_(FDR_<_1%)`
+  ) %>%
+  pivot_longer(-id,
+               names_to = "rep",
+               values_to = "ratio") %>%
+  mutate(rep = gsub("_R[1234]$", "", rep)) %>%
+  group_by(id, rep) %>%
+  summarise(ratio = median(ratio, na_rm = T)) %>%
+  pivot_wider(id_cols = id,
+              names_from = rep,
+              values_from = ratio)
 
 # Cluster based on dynamics of phosphorylated sites
-par_lap_fcm <- fuzzyC(par_lap, 6)
-res_lap_fcm <- fuzzyC(res_lap, 6)
+
+# par_lap_fcm <- fuzzyC(par_lap, 3)
+# 
+# par_lap_hclust <- hclust(dist(par_lap[,2:3]))
+# plot(par_lap_hclust)
+# par_lap_cl <- cutree(par_lap_hclust, k = 5)
+
+par_lap_cl <- kmeans(par_lap[,2], 4)$cluster
+par_lap_cl <- kmeans(par_lap[,2:3], 4)$cluster
+names(par_lap_cl) <- par_lap$id
+
+#res_lap_fcm <- fuzzyC(res_lap, 6)
 
 # Construct heterogeneous network
-egf_mlnw <- constructHetNet(ruprecht_sty, par_lap, par_lap_fcm)
-tgf_mlnw <- constructHetNet(ruprecht_sty, res_lap, res_lap_fcm)
+par_mlnw <- constructHetNet(ruprecht_sty, par_lap, par_lap_cl, modules = T)
+#tgf_mlnw <- constructHetNet(ruprecht_sty, res_lap, res_lap_fcm)
 
 ## Run RWHN algorithm
 # Recommend to run overnight or on HPC
-# EGF:
-seed_l <- lapply(1:max(par_lap_fcm$clustering), function(i){
-  c(names(par_lap_fcm$clustering[par_lap_fcm$clustering == i]))
-})
-rwhn_par <- lapply(seed_l, function(s){
-  calculateRWHN(edgelists = egf_mlnw$edgelists,
-                verti = egf_mlnw$v[egf_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
-                #verti = egf_mlnw$v,
-                seeds = s,
-                transitionProb = 0.7,
-                restart = 0.7,
-                weight_xy = 0.3,
-                weight_yz = 0.7) %>%
-    filter(name %in% egf_mlnw$v[egf_mlnw$v$layer=="func",]$v)
-})
-saveRDS(rwhn_par, "results/data/rwhn_egf_clusters.rds")
 
-#TGFa
-seed_l <- lapply(1:max(res_lap_fcm$clustering), function(i){
-  c(names(res_lap_fcm$clustering[res_lap_fcm$clustering == i]))
+par_mlnw$edgelists <- lapply(par_mlnw$edgelists, function(i)
+  i %>% filter_all(any_vars(. != "negative regulation of transcription by RNA polymerase II"))
+)
+par_mlnw$v <- par_mlnw$v[par_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",]
+
+seed_l <- lapply(1:max(par_lap_cl), function(i){
+  c(names(par_lap_cl[par_lap_cl == i]))
 })
-rwhn_res <- lapply(seed_l, function(s){
-  calculateRWHN(edgelists = tgf_mlnw$edgelists,
-                verti = tgf_mlnw$v,
+
+start <- Sys.time()
+rwhn_par <- lapply(seed_l, function(s){
+  calculateRWHN(edgelists = par_mlnw$edgelists,
+                #verti = par_mlnw$v[par_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
+                verti = par_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
                 weight_xy = 0.3,
                 weight_yz = 0.7) %>%
-    filter(name %in% tgf_mlnw$v[tgf_mlnw$v$layer=="func",]$v)
+    filter(name %in% par_mlnw$v[par_mlnw$v$layer=="func",]$v)
 })
-saveRDS(rwhn_res, "results/data/rwhn_tgf_clusters.rds")
+end <- Sys.time()
+  saveRDS(rwhn_par, "results/data/rwhn_ruprecht_clusters.rds")
+
+
 
 # visualise results with dot plot
-dot_par <- dotplot_gg(rwhn_egf_cl)
-ggsave("results/figs/rwhn_egf_clustersAsSeeds.tif", dot_par)
-dot_res <- dotplot_gg(rwhn_tgf_cl)
-ggsave("results/figs/rwhn_tgf_clustersAsSeeds.tif", dot_res)
+dot_par <- dotplot_gg(rwhn_par, n_terms = 27, remove_common = F)
+ggsave("results/figs/rwhn_ruprecht_clustersAsSeeds.tiff", dot_par[[1]])
 
 # To determine the frequency of common sites
 par_com <- dot_par[[2]] %>% filter(rank_dif == 0) %>% dplyr::select(egf_rank = rank, name) %>% unique()

@@ -1,4 +1,7 @@
-constructHetNet <- function(stytxt, phosphoData, clustering, stringPath = "data/STRINGexpmtgene_lowconf.rds", modules = T, GOpval = 0.01){
+constructHetNet <- function(stytxt, phosphoData, clustering,
+                            stringPath = "data/STRINGexpmtgene_lowconf.rds",
+                            enrichrLib = "GO_Biological_Process_2018",
+                            modules = T, pval = 0.01){
   ## Phospho
   phos <- lapply(1:max(clustering), function(x){
     cl <- names(clustering[clustering == x])
@@ -9,9 +12,15 @@ constructHetNet <- function(stytxt, phosphoData, clustering, stringPath = "data/
       cor() %>% 
       as.data.frame() %>% 
       tibble::rownames_to_column(var = "phos1") %>% 
-      gather("phos2", "value", -phos1) %>% 
-      filter(value < as.double(1.0), value > 0.99) %>% 
-      unique
+      gather("phos2", "value", -phos1)
+    
+    if(anyNA(xpnd)){
+      xpnd <- dplyr::select(xpnd, -value)
+    } else {
+      xpnd <- xpnd %>% 
+        filter(value < as.double(1.0), value > 0.99) %>% 
+        unique()
+    }
     return(xpnd) 
   }) %>% 
     do.call(rbind, .) %>% 
@@ -59,43 +68,49 @@ constructHetNet <- function(stytxt, phosphoData, clustering, stringPath = "data/
         sample <- cluster_nw %>%
           filter(module == x)
         
-        enriched <- enrichr(sample$gene.symbol, databases = "GO_Biological_Process_2018") %>% 
-          .$GO_Biological_Process_2018 %>%
-          filter(Adjusted.P.value < GOpval) %>%
-          separate(Term,
-                   into = c("Term", "GOID"),
-                   sep = " \\(",
-                   extra = "drop") %>%
-          mutate(GOID = sub("\\)",
-                            "",
-                            GOID))
+        enriched <- enrichr(sample$gene.symbol, databases = enrichrLib) %>% 
+          .[[1]] %>%
+          filter(Adjusted.P.value < pval) 
         return(enriched)
       }) %>% 
         do.call(rbind, .)
     }else{
-      enrichr(cl_prots, databases = "GO_Biological_Process_2018") %>% 
-        .$GO_Biological_Process_2018 %>%
-        filter(Adjusted.P.value < GOpval) %>%
-        separate(Term,
-                 into = c("Term", "GOID"),
-                 sep = " \\(",
-                 extra = "drop") %>%
-        mutate(GOID = sub("\\)",
-                          "",
-                          GOID))
+      enrichr(cl_prots, databases = enrichrLib) %>% 
+        .[[1]] %>%
+        filter(Adjusted.P.value < pval) 
     }
   }) %>% do.call(rbind, .)
   
-  keepID <- simplifyGO(GOID = enrichedTerms$GOID, simplifyData = simplifyGOReqData())
-  
-  prot_func <- enrichedTerms %>% 
-    filter(GOID %in% keepID) %>% 
-    separate_rows(Genes, sep = ";") %>%
-    dplyr::select(func = Term, prot = Genes, ID = GOID)
-  
+  if(grepl("GO", enrichrLib)){
+    enriched <- enrichedTerms %>%
+      separate(Term,
+               into = c("Term", "GOID"),
+               sep = " \\(",
+               extra = "drop") %>%
+      mutate(GOID = sub("\\)",
+                        "",
+                        GOID))
+    
+    keepID <- simplifyGO(GOID = enrichedTerms$GOID, simplifyData = simplifyGOReqData())
+    
+    prot_func <- enrichedTerms %>% 
+      filter(GOID %in% keepID) %>% 
+      separate_rows(Genes, sep = ";") %>%
+      dplyr::select(func = Term, prot = Genes, ID = GOID)
+  }else{
+    enrichedTerms <- mutate(enrichedTerms, Term = tolower(Term))
+    
+    prot_func <- enrichedTerms %>% 
+      separate_rows(Genes, sep = ";") %>%
+      dplyr::select(func = Term, prot = Genes)
+  }
   
   ## Func
-  hsGO <- godata('org.Hs.eg.db', ont="BP")
+  if(grepl("GO", enrichrLib)){
+  hsGO <- godata('org.Hs.eg.db', ont= ifelse(grepl("Biological", enrichrLib), "BP",
+                                             grepl("Molecular", enrichrLib), "MF",
+                                             grepl("Cellular", enrichrLib), "CC",
+                                             NA))
   semSim <- expand.grid(prot_func$ID, prot_func$ID, stringsAsFactors = F)
   semSim$sim <- apply(semSim, 1, function(i) goSim(i[1], i[2], semData = hsGO, measure = "Wang"))
   func <- semSim %>% filter(sim < 1 & sim > 0.7)
@@ -106,6 +121,25 @@ constructHetNet <- function(stytxt, phosphoData, clustering, stringPath = "data/
                                        keys = func$Var2, columns = "TERM",
                                        keytype = "GOID"))$TERM
   func <- dplyr::select(func, func1, func2) %>% unique() %>% na.omit()
+  }else{
+    
+    #The .rds file is the output of the specified .txt in /data
+    # and the following code:
+    # pwnet <- readr::read_tsv("data/pathwaySimilarities_Stoney2015.txt",
+    #                                   col_names = c("sim", "func1", "func2")) %>%
+    #   mutate(func1 = tolower(func1),
+    #          func2 = tolower(func2)) %>%
+    #   mutate(func1 = gsub("_", " ", func1),
+    #          func2 = gsub("_", " ", func2)
+    #   )
+    # saveRDS(pwnet, "data/pathwaySimilarities_Stoney2015.rds")
+
+    func <- readRDS("data/pathwaySimilarities_Stoney2015.rds") %>% 
+      filter(func1 %in% enrichedTerms$Term&
+               func2 %in% enrichedTerms$Term) %>% 
+      filter(sim < 1 & sim > 0.7) %>% 
+      dplyr::select(func1 = 1, func2 = 2)
+}
   
   
   v <- rbind(
@@ -120,6 +154,7 @@ constructHetNet <- function(stytxt, phosphoData, clustering, stringPath = "data/
     data.frame(v = unique(func$func1), layer = "func",  stringsAsFactors = F),
     data.frame(v = unique(func$func2), layer = "func",  stringsAsFactors = F)
   ) %>% 
+    na.omit() %>% 
     unique()
   
   edgelists <- edgelists <- list(x = phos, y = prot, z = func,

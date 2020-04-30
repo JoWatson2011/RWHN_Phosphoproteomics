@@ -4,6 +4,7 @@ library(tidyr)
 library(igraph)
 library(e1071)
 library(enrichR)
+library(ggplot2)
 # From Bioconductor
 library(Mfuzz)
 library(GOSemSim)
@@ -29,27 +30,24 @@ ruprecht_sty <- data.table::fread(input = "data/Ruprecht_STY_2017.csv",
 ) %>% 
   mutate(`Gene names` = gsub(";.*", "", `Gene names`),
          id = paste0(`Gene names`, "_", `Amino acid` ,`Position`)) %>% 
-  filter(!duplicated(id)) 
-colnames(ruprecht_sty) <- gsub(" ", ".", colnames(ruprecht_sty))
-colnames(ruprecht_sty)[grep("FDR.<.1%",
-                            colnames(ruprecht_sty))] <- substr(grep("FDR.<.1%", colnames(ruprecht_sty),
-                                                                      value = T),
-                                                                 8, 
-                                                                 21)
-colnames(ruprecht_sty) <- gsub("/", "", colnames(ruprecht_sty))
-
+  filter(!duplicated(id))
+colnames(ruprecht_sty) <- c("amino.acid", "localisation.prob", "position",
+                            "HL_R1", "HL_R2", "HL_R3", "HL_R4",
+                            "ML_R1", "ML_R2", "ML_R3", "ML_R4",
+                            "SignificantML", "SignificantHL",
+                            "gene.symbol", "id")
 
 # PARENTAL + LAP M/L: Filter NAs and non significant
 par_lap <- ruprecht_sty %>%
   dplyr::select(id, grep("ML", colnames(.))) %>%
   filter(SignificantML == "+" ) %>%
-  na.omit() %>%
   dplyr::select(-SignificantML
   ) %>%
   pivot_longer(-id,
                names_to = "rep",
                values_to = "ratio") %>%
-  mutate(rep = gsub("_R[1234]$", "", rep)) %>%
+  mutate(ratio = imputeLCMD::impute.QRILC(as.matrix(ratio))[[1]],
+         rep = gsub("_R[1234]$", "", rep)) %>% 
   group_by(id, rep) %>%
   summarise(ratio = median(ratio, na_rm = T)) %>%
   pivot_wider(id_cols = id,
@@ -57,17 +55,17 @@ par_lap <- ruprecht_sty %>%
               values_from = ratio)
 
 
-# RESISTANT  + LAP H/L: Filter NAs
+# RESISTANT  + LAP H/L
 res_lap <- ruprecht_sty %>%
   dplyr::select(id, grep("HL", colnames(.))) %>%
-  filter(SignificantHL == "+" ) %>%
-  na.omit() %>%
+  filter(SignificantHL == "+" )  %>% 
   dplyr::select(-SignificantHL
   ) %>%
   pivot_longer(-id,
                names_to = "rep",
                values_to = "ratio") %>%
-  mutate(rep = gsub("_R[1234]$", "", rep)) %>%
+  mutate(ratio = imputeLCMD::impute.QRILC(as.matrix(ratio))[[1]],
+         rep = gsub("_R[1234]$", "", rep)) %>%
   group_by(id, rep) %>%
   summarise(ratio = median(ratio, na_rm = T)) %>%
   pivot_wider(id_cols = id,
@@ -80,14 +78,14 @@ tot_lap <- ruprecht_sty %>%
   filter(SignificantML == "+" |
            SignificantHL == "+") %>%
   filter_missing(allowed = 1,  colnms = "^[HM]L_") %>%
-  mutate_if(is.numeric, imputeTruncNorm) %>% 
   # dplyr::select(-c(SignificantML,
   #                  SignificantHL)
   # ) %>%
   pivot_longer(-c(id, SignificantML, SignificantHL),
                names_to = "rep",
                values_to = "ratio") %>%
-  mutate(rep = gsub("_R[1234]$", "", rep)) %>%
+  mutate(ratio = imputeLCMD::impute.QRILC(as.matrix(ratio))[[1]],
+         rep = gsub("_R[1234]$", "", rep)) %>%
   group_by(id, rep) %>%
   mutate(ratio = median(ratio, na_rm = T)) %>%
   unique() %>% 
@@ -131,10 +129,61 @@ tot_lap_cl <- kmeans(tot_lap[,4:5], 5)$cluster
 names(tot_lap_cl) <- tot_lap$id
 
 
+sites <- data.frame(
+  gene = c("HNRNPU", "SRRM2", "DDX23", "NCBP1", "SRRM2", 
+           "PCBP1", "PRPF4B", "SRRM2", "CDK1", "CDK1", 
+           "SRC", "IGR1R", "LDAH", "ALDOA", "ALDOA", 
+           "PFKP", "GAPDH", "ENO1", "PKM", "PCAM", "PYGB",
+           "PGM1", "PGM2", "PFKB2", "HSP90AB1", "BAD", "FOXO3", 
+           "SRC"),
+  sites = c("S59", "S1132", "S107", "S22", "S1987", "S264", 
+            "S431", "S970", "T161", "NA", "NA", "NA", "Y16", 
+            "S39", "S46", "S386", "S83", "Y44", "Y175", "Y92", 
+            "T59", "S117", "S165", "S466", "S255", "S99", "T32",
+            "S17"),
+  paperDescription = c("Splicesome", "Splicesome", "Splicesome", 
+                       "Splicesome", "Splicesome", "Splicesome", 
+                       "Splicesome", "Splicesome", "CC. strongest observed activation of any kinase", 
+                       NA, NA, NA, "Glycotic enzymes. Highly incresed in resistance",
+                       "Glycotic enzymes. Highly incresed in resistance", "Glycotic enzymes. 
+                       Highly incresed in resistance", "Glycotic enzymes. Highly incresed in resistance", 
+                       "Glycotic enzymes. Highly incresed in resistance", 
+                       "Glycotic enzymes. Highly incresed in resistance", 
+                       "Glycotic enzymes. Highly incresed in resistance", 
+                       "Glycotic enzymes. Highly incresed in resistance", 
+                       "Glycogen catabolism", "Glycogen catabolism", "Glycogen catabolism",
+                       NA, NA, NA, NA, NA),
+  stringsAsFactors = F
+)
+  
+  readr::read_csv("data/sites_ruprecht.csv") %>% 
+  mutate(id = paste0(gene, "_", site)) %>% 
+  merge(., data.frame(id = names(tot_lap_cl), tot_cl = tot_lap_cl), by = "id",
+        all.x = T) %>% 
+  merge(., data.frame(id = names(res_lap_cl), res_cl = res_lap_cl), by = "id",
+        all.x = T)
+
 # Construct heterogeneous network
-par_mlnw <- constructHetNet(ruprecht_sty, par_lap, par_lap_cl, modules = T)
-res_mlnw <- constructHetNet(ruprecht_sty, res_lap, res_lap_cl, modules = T)
-tot_mlnw <- constructHetNet(ruprecht_sty, tot_lap, tot_lap_cl, modules = T)
+par_mlnw <- constructHetNet(stytxt = ruprecht_sty, 
+                            phosphoData =  par_lap, 
+                            clustering = par_lap_cl,
+                            modules = T,
+                            enrichrLib =  "KEGG_2019_Human",
+                            pval = 0.05)
+
+res_mlnw <- constructHetNet(stytxt = ruprecht_sty,
+                            phosphoData = res_lap,
+                            clustering =  res_lap_cl,
+                            modules = T,
+                            enrichrLib =  "KEGG_2019_Human",
+                            pval = 0.05)
+
+tot_mlnw <- constructHetNet(stytxt = ruprecht_sty,
+                            phosphoData =  tot_lap[,-c(2:3)],
+                            clustering =  tot_lap_cl,
+                            modules = T,
+                            enrichrLib =  "KEGG_2019_Human",
+                            pval = 0.05)
 
 ## Run RWHN algorithm
 # Recommend to run overnight or on HPC
@@ -159,7 +208,6 @@ seed_tot <- lapply(1:max(tot_lap_cl), function(i){
 paste("start par", Sys.time())
 rwhn_par <- lapply(seed_par, function(s){
   calculateRWHN(edgelists = par_mlnw$edgelists,
-                #verti = par_mlnw$v[par_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
                 verti = par_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
@@ -172,7 +220,6 @@ rwhn_par <- lapply(seed_par, function(s){
 paste("start res", Sys.time())
 rwhn_res <- lapply(seed_res, function(s){
   calculateRWHN(edgelists = res_mlnw$edgelists,
-                #verti = res_mlnw$v[res_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
                 verti = res_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
@@ -185,7 +232,6 @@ rwhn_res <- lapply(seed_res, function(s){
 paste("start tot", Sys.time())
 rwhn_tot <- lapply(seed_tot, function(s){
   calculateRWHN(edgelists = tot_mlnw$edgelists,
-                #verti = tot_mlnw$v[tot_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
                 verti = tot_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
@@ -196,21 +242,22 @@ rwhn_tot <- lapply(seed_tot, function(s){
 })
 
 end <- Sys.time()
-#saveRDS(rwhn_par, "results/data/rwhn_ruprecht_clusters.rds")
+
+saveRDS(rwhn_par, "results/data/rwhn_ruprecht_par.rds")
+saveRDS(rwhn_res, "results/data/rwhn_ruprecht_res.rds")
+saveRDS(rwhn_tot, "results/data/rwhn_ruprecht_tot.rds")
 
 
 
 # visualise results with dot plot
-dot_par <- dotplot_gg(rwhn_par, n_terms = 27, remove_common = F)
-ggsave("results/figs/rwhn_ruprecht_clustersAsSeeds.tiff", dot_par[[1]])
+dot_par_all <- dotplot_gg(rwhn_par, n_terms = 30, remove_common = F)
+dot_res_all <- dotplot_gg(rwhn_res, n_terms = 30, remove_common = F)
+dot_tot_all <- dotplot_gg(rwhn_tot, n_terms = 30, remove_common = F)
+dot_par_diff <- dotplot_gg(rwhn_par, n_terms = 20, remove_common = T)
+dot_res_diff <- dotplot_gg(rwhn_res, n_terms = 30, remove_common = T)
+dot_tot_diff <- dotplot_gg(rwhn_tot, n_terms =30, remove_common = T)
 
-# To determine the frequency of common sites
-par_com <- dot_par[[2]] %>% filter(rank_dif == 0) %>% dplyr::select(egf_rank = rank, name) %>% unique()
-res_com <- dot_res[[2]] %>% filter(rank_dif == 0) %>% dplyr::select(tgf_rank = rank, name) %>% unique()
-com <- merge(par_com, res_com, by = "name", all = T) %>% arrange(egf_rank, tgf_rank)
-simpl <- simplifyGOReqData()
-freq <- sapply(simpl$GO2Gene,length)
-freq_p <- freq / sum(freq) * 100
-termid <- filter(simpl$GOterms, TERM %in% com$name)
-write.csv(termid, "Table4_commonTermsCFRdata.csv")
+ggsave("results/figs/rwhn_ruprecht_parental.tiff", dot_par_all[[1]], width = 11.7, height = 7, units= "in")
+ggsave("results/figs/rwhn_ruprecht_resistant.tiff", dot_res_diff[[1]], width = 11.7, height = 7, units= "in")
+ggsave("results/figs/rwhn_ruprecht_tot.tiff", dot_tot_diff[[1]], width = 11.7, height = 7, units= "in")
 

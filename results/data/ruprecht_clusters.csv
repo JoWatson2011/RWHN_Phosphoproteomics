@@ -1,0 +1,30 @@
+"","gene","sites","paperDescription"
+"1","HNRNPU","S59","Splicesome"
+"2","SRRM2","S1132","Splicesome"
+"3","DDX23","S107","Splicesome"
+"4","NCBP1","S22","Splicesome"
+"5","SRRM2","S1987","Splicesome"
+"6","PCBP1","S264","Splicesome"
+"7","PRPF4B","S431","Splicesome"
+"8","SRRM2","S970","Splicesome"
+"9","CDK1","T161","CC. strongest observed activation of any kinase"
+"10","CDK1","NA",NA
+"11","SRC","NA",NA
+"12","IGR1R","NA",NA
+"13","LDAH","Y16","Glycotic enzymes. Highly incresed in resistance"
+"14","ALDOA","S39","Glycotic enzymes. Highly incresed in resistance"
+"15","ALDOA","S46","Glycotic enzymes. 
+                       Highly incresed in resistance"
+"16","PFKP","S386","Glycotic enzymes. Highly incresed in resistance"
+"17","GAPDH","S83","Glycotic enzymes. Highly incresed in resistance"
+"18","ENO1","Y44","Glycotic enzymes. Highly incresed in resistance"
+"19","PKM","Y175","Glycotic enzymes. Highly incresed in resistance"
+"20","PCAM","Y92","Glycotic enzymes. Highly incresed in resistance"
+"21","PYGB","T59","Glycogen catabolism"
+"22","PGM1","S117","Glycogen catabolism"
+"23","PGM2","S165","Glycogen catabolism"
+"24","PFKB2","S466",NA
+"25","HSP90AB1","S255",NA
+"26","BAD","S99",NA
+"27","FOXO3","T32",NA
+"28","SRC","S17",NA

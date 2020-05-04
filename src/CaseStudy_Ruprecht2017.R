@@ -94,6 +94,7 @@ tot_lap <- ruprecht_sty %>%
               values_from = ratio)
 
 # Cluster based on dynamics of phosphorylated sites
+set.seed(1)
 wss <- data.frame(type = c(rep("All significant", 15),
                            rep("Just * parental", 15), 
                            rep("Just * resistant", 15)),
@@ -247,6 +248,9 @@ saveRDS(rwhn_par, "results/data/rwhn_ruprecht_par.rds")
 saveRDS(rwhn_res, "results/data/rwhn_ruprecht_res.rds")
 saveRDS(rwhn_tot, "results/data/rwhn_ruprecht_tot.rds")
 
+rwhn_par <- readRDS("results/data/rwhn_ruprecht_par.rds")
+rwhn_res <- readRDS("results/data/rwhn_ruprecht_res.rds")
+rwhn_tot <- readRDS("results/data/rwhn_ruprecht_tot.rds")
 
 
 # visualise results with dot plot
@@ -256,6 +260,17 @@ dot_tot_all <- dotplot_gg(rwhn_tot, n_terms = 30, remove_common = F)
 dot_par_diff <- dotplot_gg(rwhn_par, n_terms = 20, remove_common = T)
 dot_res_diff <- dotplot_gg(rwhn_res, n_terms = 30, remove_common = T)
 dot_tot_diff <- dotplot_gg(rwhn_tot, n_terms =30, remove_common = T)
+
+
+dot_res_diff[[1]]  <- dot_res_diff[[1]] + 
+    ggtitle("RWHN results from \`lapatanib-resistant\` network")
+dot_tot_diff[[1]]  <- dot_tot_diff[[1]] +
+  ggtitle("RWHN results from \'Total\' network")
+
+gg <- dot_tot_diff[[1]]  / dot_res_diff[[1]] + plot_layout(guides = "collect")
+gg <- gg + plot_annotation(tag_levels = "A")
+
+ggsave("results/figs/rwhn_ruprecht_kegg_patchwork.tiff", width = 11.7, height = 10, units= "in")
 
 ggsave("results/figs/rwhn_ruprecht_parental.tiff", dot_par_all[[1]], width = 11.7, height = 7, units= "in")
 ggsave("results/figs/rwhn_ruprecht_resistant.tiff", dot_res_diff[[1]], width = 11.7, height = 7, units= "in")
@@ -308,12 +323,22 @@ rwhn_tot_GO <- lapply(seed_tot, function(s){
 paste("end", Sys.time())
 
 saveRDS(rwhn_res_GO, "results/data/rwhn_res_GO.rds")
-saveRDS(rwhn_res_GO, "results/data/rwhn_tot_GO.rds")
+saveRDS(rwhn_tot_GO, "results/data/rwhn_tot_GO.rds")
 
-dot_res_all <- dotplot_gg(rwhn_res_GO, n_terms = 30, remove_common = F)
-dot_tot_all <- dotplot_gg(rwhn_tot_GO, n_terms = 30, remove_common = F)
-dot_res_diff <- dotplot_gg(rwhn_res_GO, n_terms = 30, remove_common = T)
-dot_tot_diff <- dotplot_gg(rwhn_tot_GO, n_terms =30, remove_common = T)
 
-ggsave("results/figs/rwhn_ruprecht_resistant.tiff", dot_res_diff[[1]], width = 11.7, height = 7, units= "in")
-ggsave("results/figs/rwhn_ruprecht_tot.tiff", dot_tot_diff[[1]], width = 11.7, height = 7, units= "in")
+dot_res_diff <- dotplot_gg(rwhn_res_GO, n_terms = 30, remove_common = T, size = 2)
+dot_res_diff[[1]]  <- dot_res_diff[[1]] + 
+  theme(axis.text.x = element_text(size = 7)) +
+  ggtitle("RWHN results from \`lapatanib-resistant\` network")
+dot_tot_diff <- dotplot_gg(rwhn_tot_GO, n_terms =30, remove_common = T, size = 2)
+dot_tot_diff[[1]]  <- dot_tot_diff[[1]] + theme(axis.text.x = element_text(size = 7))  +
+  ggtitle("RWHN results from \'Total\' network")
+
+
+gg <- dot_tot_diff[[1]]  / dot_res_diff[[1]] + plot_layout(guides = "collect")
+gg <- gg + plot_annotation(tag_levels = "A")
+
+ggsave("results/figs/rwhn_ruprecht_patchwork.tiff", width = 11.7, height = 10, units= "in")
+# 
+# ggsave("results/figs/rwhn_ruprecht_resistant_GO.tiff", dot_res_diff[[1]], width = 11.7, height = 7, units= "in")
+# ggsave("results/figs/rwhn_ruprecht_tot_GO.tiff", dot_tot_diff[[1]], width = 11.7, height = 7, units= "in")

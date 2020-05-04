@@ -1,4 +1,5 @@
-dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F){
+dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F,
+                       size = 5, col = "OrRd"){
   library(dplyr)
   library(ggplot2)
   
@@ -33,10 +34,10 @@ dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F)
   }
   
   dot <- ggplot(ggdf, aes(y = as.factor(seed), x = name)) +
-    geom_count(aes(color = rank_flt)) +
+    geom_count(aes(color = rank_flt), size = size) +
     theme_bw() +
     scale_y_discrete(name = "Cluster") +
-    scale_color_distiller(name = "RWHN Rank", palette = "OrRd") +
+    scale_color_distiller(name = "RWHN Rank", palette = col) +
     theme(axis.title.x = element_blank(),
           axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
           plot.margin = margin(10,10,10,160)

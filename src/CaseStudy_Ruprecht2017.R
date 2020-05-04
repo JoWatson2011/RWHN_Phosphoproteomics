@@ -154,14 +154,14 @@ sites <- data.frame(
                        "Glycogen catabolism", "Glycogen catabolism", "Glycogen catabolism",
                        NA, NA, NA, NA, NA),
   stringsAsFactors = F
-)
-  
-  readr::read_csv("data/sites_ruprecht.csv") %>% 
-  mutate(id = paste0(gene, "_", site)) %>% 
+) %>% 
+  mutate(id = paste0(gene, "_", sites)) %>% 
   merge(., data.frame(id = names(tot_lap_cl), tot_cl = tot_lap_cl), by = "id",
         all.x = T) %>% 
   merge(., data.frame(id = names(res_lap_cl), res_cl = res_lap_cl), by = "id",
         all.x = T)
+write.csv(sites, "results/data/ruprecht_clusters.csv")
+
 
 # Construct heterogeneous network
 par_mlnw <- constructHetNet(stytxt = ruprecht_sty, 
@@ -261,3 +261,59 @@ ggsave("results/figs/rwhn_ruprecht_parental.tiff", dot_par_all[[1]], width = 11.
 ggsave("results/figs/rwhn_ruprecht_resistant.tiff", dot_res_diff[[1]], width = 11.7, height = 7, units= "in")
 ggsave("results/figs/rwhn_ruprecht_tot.tiff", dot_tot_diff[[1]], width = 11.7, height = 7, units= "in")
 
+######
+par_mlnw_GO <- constructHetNet(stytxt = ruprecht_sty,
+                            phosphoData =  par_lap, 
+                            clustering = par_lap_cl,
+                            modules = T,
+                            pval = 0.05)
+
+res_mlnw_GO <- constructHetNet(stytxt = ruprecht_sty,
+                            phosphoData = res_lap,
+                            clustering =  res_lap_cl,
+                            modules = T,
+                            pval = 0.05)
+
+tot_mlnw_GO <- constructHetNet(stytxt = ruprecht_sty,
+                            phosphoData =  tot_lap[,-c(2:3)],
+                            clustering =  tot_lap_cl,
+                            modules = T,
+                            pval = 0.05)
+
+
+
+paste("start res", Sys.time())
+rwhn_res_GO <- lapply(seed_res, function(s){
+  calculateRWHN(edgelists = res_mlnw_GO$edgelists,
+                verti = res_mlnw_GO$v,
+                seeds = s,
+                transitionProb = 0.7,
+                restart = 0.7,
+                weight_xy = 0.3,
+                weight_yz = 0.7) %>%
+    filter(name %in% res_mlnw_GO$v[res_mlnw_GO$v$layer=="func",]$v)
+})
+
+paste("start tot", Sys.time())
+rwhn_tot_GO <- lapply(seed_tot, function(s){
+  calculateRWHN(edgelists = tot_mlnw_GO$edgelists,
+                verti = tot_mlnw_GO$v,
+                seeds = s,
+                transitionProb = 0.7,
+                restart = 0.7,
+                weight_xy = 0.3,
+                weight_yz = 0.7) %>%
+    filter(name %in% tot_mlnw_GO$v[tot_mlnw_GO$v$layer=="func",]$v)
+})
+paste("end", Sys.time())
+
+saveRDS(rwhn_res_GO, "results/data/rwhn_res_GO.rds")
+saveRDS(rwhn_res_GO, "results/data/rwhn_tot_GO.rds")
+
+dot_res_all <- dotplot_gg(rwhn_res_GO, n_terms = 30, remove_common = F)
+dot_tot_all <- dotplot_gg(rwhn_tot_GO, n_terms = 30, remove_common = F)
+dot_res_diff <- dotplot_gg(rwhn_res_GO, n_terms = 30, remove_common = T)
+dot_tot_diff <- dotplot_gg(rwhn_tot_GO, n_terms =30, remove_common = T)
+
+ggsave("results/figs/rwhn_ruprecht_resistant.tiff", dot_res_diff[[1]], width = 11.7, height = 7, units= "in")
+ggsave("results/figs/rwhn_ruprecht_tot.tiff", dot_tot_diff[[1]], width = 11.7, height = 7, units= "in")

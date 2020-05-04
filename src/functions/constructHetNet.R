@@ -82,7 +82,7 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
   }) %>% do.call(rbind, .)
   
   if(grepl("GO", enrichrLib)){
-    enriched <- enrichedTerms %>%
+    enrichedTerms <- enrichedTerms %>%
       separate(Term,
                into = c("Term", "GOID"),
                sep = " \\(",
@@ -107,20 +107,22 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
   
   ## Func
   if(grepl("GO", enrichrLib)){
-  hsGO <- godata('org.Hs.eg.db', ont= ifelse(grepl("Biological", enrichrLib), "BP",
-                                             grepl("Molecular", enrichrLib), "MF",
-                                             grepl("Cellular", enrichrLib), "CC",
-                                             NA))
-  semSim <- expand.grid(prot_func$ID, prot_func$ID, stringsAsFactors = F)
-  semSim$sim <- apply(semSim, 1, function(i) goSim(i[1], i[2], semData = hsGO, measure = "Wang"))
-  func <- semSim %>% filter(sim < 1 & sim > 0.7)
-  func$func1 <- (AnnotationDbi::select(GO.db,
-                                       keys = func$Var1, columns = "TERM",
-                                       keytype = "GOID"))$TERM
-  func$func2 <- (AnnotationDbi::select(GO.db,
-                                       keys = func$Var2, columns = "TERM",
-                                       keytype = "GOID"))$TERM
-  func <- dplyr::select(func, func1, func2) %>% unique() %>% na.omit()
+    hsGO <- godata('org.Hs.eg.db', ont= ifelse(grepl("Biological", enrichrLib), "BP",
+                                               ifelse(grepl("Molecular", enrichrLib), "MF",
+                                                      ifelse(grepl("Cellular", enrichrLib), "CC",
+                                                             NA)
+                                               )
+    ))
+    semSim <- expand.grid(prot_func$ID, prot_func$ID, stringsAsFactors = F)
+    semSim$sim <- apply(semSim, 1, function(i) goSim(i[1], i[2], semData = hsGO, measure = "Wang"))
+    func <- semSim %>% filter(sim < 1 & sim > 0.7)
+    func$func1 <- (AnnotationDbi::select(GO.db,
+                                         keys = func$Var1, columns = "TERM",
+                                         keytype = "GOID"))$TERM
+    func$func2 <- (AnnotationDbi::select(GO.db,
+                                         keys = func$Var2, columns = "TERM",
+                                         keytype = "GOID"))$TERM
+    func <- dplyr::select(func, func1, func2) %>% unique() %>% na.omit()
   }else{
     
     #The .rds file is the output of the specified .txt in /data
@@ -133,13 +135,13 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
     #          func2 = gsub("_", " ", func2)
     #   )
     # saveRDS(pwnet, "data/pathwaySimilarities_Stoney2015.rds")
-
+    
     func <- readRDS("data/pathwaySimilarities_Stoney2015.rds") %>% 
       filter(func1 %in% enrichedTerms$Term&
                func2 %in% enrichedTerms$Term) %>% 
       filter(sim < 1 & sim > 0.7) %>% 
       dplyr::select(func1 = 1, func2 = 2)
-}
+  }
   
   
   v <- rbind(

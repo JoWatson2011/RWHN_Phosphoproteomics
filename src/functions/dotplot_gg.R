@@ -37,7 +37,8 @@ dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F,
     geom_count(aes(color = rank_flt), size = size) +
     theme_bw() +
     scale_y_discrete(name = "Cluster") +
-    scale_color_distiller(name = "RWHN Rank", palette = col) +
+    scale_color_distiller(name = "RWHN Rank", palette = col,
+                          guide = guide_colorbar(reverse = T)) +
     theme(axis.title.x = element_blank(),
           axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
           plot.margin = margin(10,10,10,160)

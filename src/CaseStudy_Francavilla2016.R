@@ -21,7 +21,7 @@ source("src/functions/dotplot_gg.R")
 
 # Import data
 cfr_sty <- data.table::fread(input = "data/CFR_STY_2016.csv",
-                             select = c(1:9, 26:33)
+                             select = c(1:9, 26:35)
 ) %>% 
   mutate(id = paste0(`Gene names`, "_", `Swiss-Prot phosphosite`)) %>% 
   filter(!duplicated(id)) %>% 
@@ -43,13 +43,15 @@ impute_fun <- function(i){
 }
 
 egf <- cfr_sty %>% 
-  dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>% 
+  dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>%
+  filter(`Regulated by EGF` == "+") %>% 
  # filter_at(vars(matches("ratio")), ~ . > 0.5 | . < -1) %>% 
   filter_missing(allowed = 2, colnms = "ratio") %>%
   mutate_at(vars(matches("ratio")), impute_fun)
   
 tgf <- cfr_sty %>% 
   dplyr::select(id, grep("TGF", colnames(cfr_sty))) %>% 
+  filter(`Regulated by TGFalfa` == "+") %>% 
 #  filter_at(vars(matches("ratio")), ~ . > 0.5 | . < -1) %>%
   filter_missing(allowed = 2, colnms = "ratio") %>%  
   mutate_at(vars(matches("ratio")), impute_fun)
@@ -80,7 +82,7 @@ rwhn_egf <- lapply(seed_l, function(s){
                 weight_yz = 0.7) %>%
     filter(name %in% egf_mlnw$v[egf_mlnw$v$layer=="func",]$v)
 })
-saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters.rds")
+#saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters.rds")
 
 #TGFa
 seed_l <- lapply(1:max(tgf_fcm$clustering), function(i){
@@ -96,7 +98,7 @@ rwhn_tgf <- lapply(seed_l, function(s){
                 weight_yz = 0.7) %>%
     filter(name %in% tgf_mlnw$v[tgf_mlnw$v$layer=="func",]$v)
 })
-saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
+#saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
 
 # visualise results with dot plot
 rwhn_egf <- readRDS("results/data/rwhn_egf_clusters.rds")
@@ -119,7 +121,7 @@ dot_tgf[[1]] <- dot_tgf[[1]] +
   ggtitle("RWHN ranks from TGF-a network")
 
 dots <- dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect")
-ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 8.3, height = 8, units = "in")
+#ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 8.3, height = 8, units = "in")
 
 
 data <- rbind(tgf_fcm$g$data, egf_fcm$g$data) %>% 
@@ -145,15 +147,28 @@ raf1 <- ggplot() +
   ylab("Phosphorylation changes from baseline") + labs(fill= "Membership")
 
 
-ggsave("results/figs/rwhn_francavilla_raf1.tiff", raf1, width = 8.3, height = 3.7, units = "in")
+#ggsave("results/figs/rwhn_francavilla_raf1.tiff", raf1, width = 8.3, height = 3.7, units = "in")
 
 # To determine the frequency of common sites
-egf_com <- dot_egf[[2]] %>% filter(rank_dif == 0) %>% dplyr::select(egf_rank = rank, name) %>% unique()
-tgf_com <- dot_tgf[[2]] %>% filter(rank_dif == 0) %>% dplyr::select(tgf_rank = rank, name) %>% unique()
-com <- merge(egf_com, tgf_com, by = "name", all = T) %>% arrange(egf_rank, tgf_rank)
+egf_com <- dotplot_gg(rwhn_egf,remove_common = F, size = 2, n_terms = 20)  %>%
+  .[[2]] %>% 
+  filter(rank_dif == 0) %>% 
+  dplyr::select(egf_rank = rank, name) %>%
+  unique()
+tgf_com <- dotplot_gg(rwhn_tgf,remove_common = F, size = 2, n_terms = 20)  %>%
+  .[[2]] %>% 
+  filter(rank_dif == 0) %>% 
+  dplyr::select(tgf_rank = rank, name) %>%
+  unique()
+com <- merge(egf_com, tgf_com, by = "name", all = T) %>%
+  arrange(egf_rank, tgf_rank) %>% 
+  unique()
 simpl <- simplifyGOReqData()
+termid <- merge(com, simpl$GOterms, by.x = "name", by.y = "TERM") %>% 
+  unique()
 freq <- sapply(simpl$GO2Gene,length)
 freq_p <- freq / sum(freq) * 100
-termid <- filter(simpl$GOterms, TERM %in% com$name)
-write.csv(termid, "results/data/Table4_commonTermsCFRdata.csv")
+data.frame(pct = freq_p[names(freq_p) %in% termid$GOID],
+           GOID = names(freq_p)[names(freq_p) %in% termid$GOID])
+#write.csv(termid, "results/data/Table4_commonTermsCFRdata.csv")
 

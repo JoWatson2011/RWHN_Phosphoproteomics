@@ -44,15 +44,17 @@ impute_fun <- function(i){
 
 egf <- cfr_sty %>% 
   dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>%
-  filter(`Regulated by EGF` == "+") %>% 
+  filter(Regulated_by_EGF == "+") %>% 
  # filter_at(vars(matches("ratio")), ~ . > 0.5 | . < -1) %>% 
+  dplyr::select(-Regulated_by_EGF) %>% 
   filter_missing(allowed = 2, colnms = "ratio") %>%
   mutate_at(vars(matches("ratio")), impute_fun)
   
 tgf <- cfr_sty %>% 
   dplyr::select(id, grep("TGF", colnames(cfr_sty))) %>% 
-  filter(`Regulated by TGFalfa` == "+") %>% 
+  filter(Regulated_by_TGFalfa == "+") %>% 
 #  filter_at(vars(matches("ratio")), ~ . > 0.5 | . < -1) %>%
+  dplyr::select(-Regulated_by_TGFalfa) %>% 
   filter_missing(allowed = 2, colnms = "ratio") %>%  
   mutate_at(vars(matches("ratio")), impute_fun)
 
@@ -73,8 +75,8 @@ seed_l <- lapply(1:max(egf_fcm$clustering), function(i){
 })
 rwhn_egf <- lapply(seed_l, function(s){
   calculateRWHN(edgelists = egf_mlnw$edgelists,
-                verti = egf_mlnw$v[egf_mlnw$v$v != "negative regulation of transcription by RNA polymerase II",],
-                #verti = egf_mlnw$v,
+                verti = egf_mlnw$v[egf_mlnw$v$v != "import into nucleus",],
+               # verti = egf_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
@@ -82,7 +84,7 @@ rwhn_egf <- lapply(seed_l, function(s){
                 weight_yz = 0.7) %>%
     filter(name %in% egf_mlnw$v[egf_mlnw$v$layer=="func",]$v)
 })
-#saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters.rds")
+saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters.rds")
 
 #TGFa
 seed_l <- lapply(1:max(tgf_fcm$clustering), function(i){
@@ -98,7 +100,7 @@ rwhn_tgf <- lapply(seed_l, function(s){
                 weight_yz = 0.7) %>%
     filter(name %in% tgf_mlnw$v[tgf_mlnw$v$layer=="func",]$v)
 })
-#saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
+saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
 
 # visualise results with dot plot
 rwhn_egf <- readRDS("results/data/rwhn_egf_clusters.rds")
@@ -121,7 +123,7 @@ dot_tgf[[1]] <- dot_tgf[[1]] +
   ggtitle("RWHN ranks from TGF-a network")
 
 dots <- dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect")
-#ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 8.3, height = 8, units = "in")
+ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 8.3, height = 8, units = "in")
 
 
 data <- rbind(tgf_fcm$g$data, egf_fcm$g$data) %>% 
@@ -138,7 +140,8 @@ raf1 <- ggplot() +
                 group = Identifier,color = Identifier),
             data = filter(data,
                           grepl("RAF1", Identifier)),
-            size = 1) +
+            size = 1, linetype = "dashed") +
+  scale_color_viridis_d() +
   facet_grid(stim ~ clusterindex) +
   scale_x_discrete(limits = c("1", "8", "40", "90")) +
   geom_hline(yintercept = 0, 
@@ -146,8 +149,16 @@ raf1 <- ggplot() +
   theme_minimal() +
   ylab("Phosphorylation changes from baseline") + labs(fill= "Membership")
 
+raf1_rab7 <- raf1 +
+  geom_line(aes(x = Time, y = expression, group = Identifier, color = "RAB7A_Y183"),
+            data = filter(data, grepl("RAB7", Identifier)),
+            linetype = "dotdash"
+  )
+            #color = "Purple")
 
-#ggsave("results/figs/rwhn_francavilla_raf1.tiff", raf1, width = 8.3, height = 3.7, units = "in")
+ggsave("results/figs/rwhn_francavilla_raf1.tiff", raf1, width = 8.3, height = 3.7, units = "in")
+
+ggsave("results/figs/rwhn_francavilla_raf1rab7.tiff", raf1_rab7, width = 8.3, height = 3.7, units = "in")
 
 # To determine the frequency of common sites
 egf_com <- dotplot_gg(rwhn_egf,remove_common = F, size = 2, n_terms = 20)  %>%
@@ -170,5 +181,5 @@ freq <- sapply(simpl$GO2Gene,length)
 freq_p <- freq / sum(freq) * 100
 data.frame(pct = freq_p[names(freq_p) %in% termid$GOID],
            GOID = names(freq_p)[names(freq_p) %in% termid$GOID])
-#write.csv(termid, "results/data/Table4_commonTermsCFRdata.csv")
+write.csv(termid, "results/data/Table4_commonTermsCFRdata.csv")
 

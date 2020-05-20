@@ -1,7 +1,7 @@
 constructHetNet <- function(stytxt, phosphoData, clustering,
                             stringPath = "data/STRINGexpmtgene_lowconf.rds",
                             enrichrLib = "GO_Biological_Process_2018",
-                            modules = T, pval = 0.01){
+                            modules = T, pval = 0.05){
   ## Phospho
   phos <- lapply(1:max(clustering), function(x){
     cl <- names(clustering[clustering == x])

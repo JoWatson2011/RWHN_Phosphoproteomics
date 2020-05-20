@@ -21,34 +21,49 @@ source("src/functions/calculateRWHN.R")
 source("src/functions/dotplot_gg.R")
 
 # Import data
-ruprecht_sty <- data.table::fread(input = "data/Ruprecht_STY_2017.csv",
-                             select = c(13, 30, 37,
-                                        39:46,
-                                        93:94,
-                                        100
-                                        ),
-                             skip = 1
-) %>% 
-  mutate(`Gene names` = gsub(";.*", "", `Gene names`),
-         id = paste0(`Gene names`, "_", `Amino acid` ,`Position`)) %>% 
+ruprecht_sty <-
+  data.table::fread(
+    input = "data/Ruprecht_STY_2017.csv",
+    select = c(13, 30, 37,
+               39:46,
+               93:94,
+               100),
+    skip = 1
+  ) %>%
+  mutate(
+    `Gene names` = gsub(";.*", "", `Gene names`),
+    id = paste0(`Gene names`, "_", `Amino acid` , `Position`)
+  ) %>%
   filter(!duplicated(id))
-colnames(ruprecht_sty) <- c("amino.acid", "localisation.prob", "position",
-                            "HL_R1", "HL_R2", "HL_R3", "HL_R4",
-                            "ML_R1", "ML_R2", "ML_R3", "ML_R4",
-                            "SignificantML", "SignificantHL",
-                            "gene.symbol", "id")
+colnames(ruprecht_sty) <-
+  c(
+    "amino.acid",
+    "localisation.prob",
+    "position",
+    "HL_R1",
+    "HL_R2",
+    "HL_R3",
+    "HL_R4",
+    "ML_R1",
+    "ML_R2",
+    "ML_R3",
+    "ML_R4",
+    "SignificantML",
+    "SignificantHL",
+    "gene.symbol",
+    "id"
+  )
 
 # PARENTAL + LAP M/L: Filter NAs and non significant
 par_lap <- ruprecht_sty %>%
   dplyr::select(id, grep("ML", colnames(.))) %>%
-  filter(SignificantML == "+" ) %>%
-  dplyr::select(-SignificantML
-  ) %>%
+  filter(SignificantML == "+") %>%
+  dplyr::select(-SignificantML) %>%
   pivot_longer(-id,
                names_to = "rep",
                values_to = "ratio") %>%
   mutate(ratio = imputeLCMD::impute.QRILC(as.matrix(ratio))[[1]],
-         rep = gsub("_R[1234]$", "", rep)) %>% 
+         rep = gsub("_R[1234]$", "", rep)) %>%
   group_by(id, rep) %>%
   summarise(ratio = median(ratio, na_rm = T)) %>%
   pivot_wider(id_cols = id,
@@ -59,9 +74,8 @@ par_lap <- ruprecht_sty %>%
 # RESISTANT  + LAP H/L
 res_lap <- ruprecht_sty %>%
   dplyr::select(id, grep("HL", colnames(.))) %>%
-  filter(SignificantHL == "+" )  %>% 
-  dplyr::select(-SignificantHL
-  ) %>%
+  filter(SignificantHL == "+")  %>%
+  dplyr::select(-SignificantHL) %>%
   pivot_longer(-id,
                names_to = "rep",
                values_to = "ratio") %>%
@@ -89,78 +103,162 @@ tot_lap <- ruprecht_sty %>%
          rep = gsub("_R[1234]$", "", rep)) %>%
   group_by(id, rep) %>%
   mutate(ratio = median(ratio, na_rm = T)) %>%
-  unique() %>% 
+  unique() %>%
   pivot_wider(#id_cols = id,
-              names_from = rep,
-              values_from = ratio)
+    names_from = rep,
+    values_from = ratio)
 
 # Cluster based on dynamics of phosphorylated sites
 set.seed(1)
-wss <- data.frame(type = c(rep("All significant", 15),
-                           rep("Just * parental", 15), 
-                           rep("Just * resistant", 15)),
-                  cl = rep(1:15, 3),
-                  wss = c(sapply(1:15, 
-                                 function(k){kmeans(tot_lap[,4:5], 
-                                                    k, nstart=50,
-                                                    iter.max = 15 )$tot.withinss}),
-                          sapply(1:15, 
-                                 function(k){kmeans(par_lap[,2], 
-                                                    k, nstart=50,
-                                                    iter.max = 15 )$tot.withinss}),
-                          sapply(1:15, 
-                                 function(k){kmeans(res_lap[,2], 
-                                                    k, nstart=50,
-                                                    iter.max = 15 )$tot.withinss})),
-                  stringsAsFactors = F)
+wss <- data.frame(
+  type = c(
+    rep("All significant", 15),
+    rep("Just * parental", 15),
+    rep("Just * resistant", 15)
+  ),
+  cl = rep(1:15, 3),
+  wss = c(
+    sapply(1:15,
+           function(k) {
+             kmeans(tot_lap[, 4:5],
+                    k, nstart = 50,
+                    iter.max = 15)$tot.withinss
+           }),
+    sapply(1:15,
+           function(k) {
+             kmeans(par_lap[, 2],
+                    k, nstart = 50,
+                    iter.max = 15)$tot.withinss
+           }),
+    sapply(1:15,
+           function(k) {
+             kmeans(res_lap[, 2],
+                    k, nstart = 50,
+                    iter.max = 15)$tot.withinss
+           })
+  ),
+  stringsAsFactors = F
+)
 ggplot(wss, aes(x = cl, y = wss, color = type)) +
-  geom_point() + 
+  geom_point() +
   geom_line() +
   xlab("Number of clusters K") +
   ylab("Total within-clusters sum of squares") +
   scale_color_discrete()
 
 
-par_lap_cl <- kmeans(par_lap[,2], 2)$cluster
+par_lap_cl <- kmeans(par_lap[, 2], 2)$cluster
 names(par_lap_cl) <- par_lap$id
 
-res_lap_cl <- kmeans(res_lap[,2], 4)$cluster
+res_lap_cl <- kmeans(res_lap[, 2], 4)$cluster
 names(res_lap_cl) <- res_lap$id
 
-tot_lap_cl <- kmeans(tot_lap[,4:5], 5)$cluster
+tot_lap_cl <- kmeans(tot_lap[, 4:5], 5)$cluster
 names(tot_lap_cl) <- tot_lap$id
 
 
 sites <- data.frame(
-  gene = c("HNRNPU", "SRRM2", "DDX23", "NCBP1", "SRRM2", 
-           "PCBP1", "PRPF4B", "SRRM2", "CDK1", "CDK1", 
-           "SRC", "IGR1R", "LDAH", "ALDOA", "ALDOA", 
-           "PFKP", "GAPDH", "ENO1", "PKM", "PCAM", "PYGB",
-           "PGM1", "PGM2", "PFKB2", "HSP90AB1", "BAD", "FOXO3", 
-           "SRC"),
-  sites = c("S59", "S1132", "S107", "S22", "S1987", "S264", 
-            "S431", "S970", "T161", "NA", "NA", "NA", "Y16", 
-            "S39", "S46", "S386", "S83", "Y44", "Y175", "Y92", 
-            "T59", "S117", "S165", "S466", "S255", "S99", "T32",
-            "S17"),
-  paperDescription = c("Splicesome", "Splicesome", "Splicesome", 
-                       "Splicesome", "Splicesome", "Splicesome", 
-                       "Splicesome", "Splicesome", "CC. strongest observed activation of any kinase", 
-                       NA, NA, NA, "Glycotic enzymes. Highly incresed in resistance",
-                       "Glycotic enzymes. Highly incresed in resistance", "Glycotic enzymes. 
-                       Highly incresed in resistance", "Glycotic enzymes. Highly incresed in resistance", 
-                       "Glycotic enzymes. Highly incresed in resistance", 
-                       "Glycotic enzymes. Highly incresed in resistance", 
-                       "Glycotic enzymes. Highly incresed in resistance", 
-                       "Glycotic enzymes. Highly incresed in resistance", 
-                       "Glycogen catabolism", "Glycogen catabolism", "Glycogen catabolism",
-                       NA, NA, NA, NA, NA),
+  gene = c(
+    "HNRNPU",
+    "SRRM2",
+    "DDX23",
+    "NCBP1",
+    "SRRM2",
+    "PCBP1",
+    "PRPF4B",
+    "SRRM2",
+    "CDK1",
+    "CDK1",
+    "SRC",
+    "IGR1R",
+    "LDAH",
+    "ALDOA",
+    "ALDOA",
+    "PFKP",
+    "GAPDH",
+    "ENO1",
+    "PKM",
+    "PCAM",
+    "PYGB",
+    "PGM1",
+    "PGM2",
+    "PFKB2",
+    "HSP90AB1",
+    "BAD",
+    "FOXO3",
+    "SRC"
+  ),
+  sites = c(
+    "S59",
+    "S1132",
+    "S107",
+    "S22",
+    "S1987",
+    "S264",
+    "S431",
+    "S970",
+    "T161",
+    "NA",
+    "NA",
+    "NA",
+    "Y16",
+    "S39",
+    "S46",
+    "S386",
+    "S83",
+    "Y44",
+    "Y175",
+    "Y92",
+    "T59",
+    "S117",
+    "S165",
+    "S466",
+    "S255",
+    "S99",
+    "T32",
+    "S17"
+  ),
+  paperDescription = c(
+    "Splicesome",
+    "Splicesome",
+    "Splicesome",
+    "Splicesome",
+    "Splicesome",
+    "Splicesome",
+    "Splicesome",
+    "Splicesome",
+    "CC. strongest observed activation of any kinase",
+    NA,
+    NA,
+    NA,
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycotic enzymes.
+                       Highly incresed in resistance",
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycotic enzymes. Highly incresed in resistance",
+    "Glycogen catabolism",
+    "Glycogen catabolism",
+    "Glycogen catabolism",
+    NA,
+    NA,
+    NA,
+    NA,
+    NA
+  ),
   stringsAsFactors = F
-) %>% 
-  mutate(id = paste0(gene, "_", sites)) %>% 
-  merge(., data.frame(id = names(tot_lap_cl), tot_cl = tot_lap_cl), by = "id",
-        all.x = T) %>% 
-  merge(., data.frame(id = names(res_lap_cl), res_cl = res_lap_cl), by = "id",
+) %>%
+  mutate(id = paste0(gene, "_", sites)) %>%
+  merge(.,
+        data.frame(id = names(tot_lap_cl), tot_cl = tot_lap_cl),
+        by = "id",
+        all.x = T) %>%
+  merge(.,
+        data.frame(id = names(res_lap_cl), res_cl = res_lap_cl),
+        by = "id",
         all.x = T)
 write.csv(sites, "results/data/ruprecht_clusters.csv")
 

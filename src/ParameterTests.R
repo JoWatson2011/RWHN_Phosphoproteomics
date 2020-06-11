@@ -105,8 +105,8 @@ parameters <- data.frame(trans = c(seq(0.2, 0.8, 0.1), rep(0.5, 21)),
                          eta_yz = c(rep(0.5, 21), seq(0.2, 0.8, 0.1)), 
                          param_altered = c(rep("Transition Probability", 7),
                                            rep("Restart Probability", 7),
-                                           rep("Phos - Prot Jumping Probability", 7),
-                                           rep("Prot - Func Jumping Probability", 7))
+                                           rep("Phos-Prot Jumping Prob.", 7),
+                                           rep("Prot-Func Jumping Prob.", 7))
 ) 
 
 no_cores <- detectCores() - 1
@@ -141,30 +141,29 @@ forhm <- lapply(1:length(rwhn), function(i){
   group_by(name, rank, seed, param_altered) %>% 
   summarise(n = n()) %>% 
     mutate(n = 100/7*n)
-  
 
-g <- lapply(1:5, function(i){
-  ggplot(forhm[forhm$seed==i,], aes(x = rank, y = name, fill = n)) +
-    facet_wrap(~ param_altered) +
-    #geom_density_ridges(aes(height = n), stat = "identity") +
-    geom_tile() +
-    scale_fill_gradient("", low = "red", high = "blue") +
-    ylab("GO Term") +
-    xlab("RWHN Rank") +
-    theme_ridges() + 
-    ggtitle(paste("Seed set to sites in Cluster", i)) +
-    theme(legend.text = element_text(size = 7),
-          plot.title = element_text(size = 7),
-          axis.text.y = element_blank(), 
-          axis.text.x = element_text(size = 7),
-          axis.title = element_text(size = 7), 
-          axis.title.x = element_text(hjust = 0.5),
-          axis.title.y = element_text(hjust = 0.5),
-          strip.text = element_text(size = 7)
-    )
-})
+g <- ggplot(forhm, aes(x = rank, y = name, fill = n)) +
+  facet_grid(seed ~ param_altered) + # nrow = 5, ncol = 4, strip.position = "right") +
+  #geom_density_ridges(aes(height = n), stat = "identity") +
+  geom_tile() +
+  scale_fill_gradient("", low = "red", high = "blue") +
+  ylab("GO Term") +
+  xlab("RWHN Rank") +
+  theme_ridges() + 
+  theme(legend.text = element_text(size = 5),
+        plot.title = element_text(size = 5),
+        axis.text.y = element_blank(), 
+        axis.text.x = element_text(size = 5),
+        axis.title = element_text(size = 5), 
+        axis.title.x = element_text(hjust = 0.5),
+        axis.title.y = element_text(hjust = 0.5),
+        strip.text = element_text(size = 5)
+  )
 
-lapply(1:5, function(i)
-  ggsave(filename = paste0("results/figs/controls/parameterChanges_", i, ".tiff"), 
-       g[[i]])
-)
+ggsave(filename = paste0("results/figs/controls/parameterChanges_fct.tiff"),
+       plot = g + theme(legend.position = "none"),
+       width = 8.9, height = 15, unit = "cm")
+ggsave(filename = "results/figs/controls/parameterChanges_lgd.tiff",
+       plot = g,
+       width = 8.9, height = 15, unit = "cm")
+

@@ -106,24 +106,44 @@ saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
 rwhn_egf <- readRDS("results/data/rwhn_egf_clusters.rds")
 rwhn_tgf <- readRDS("results/data/rwhn_tgf_clusters.rds")
 
-dot_egf <- dotplot_gg(rwhn_egf,remove_common = T, size = 2, n_terms = 20)
-dot_egf[[1]] <- dot_egf[[1]] + 
-  theme(axis.text.x = element_text(size = 5.5),
-        legend.key.size = unit(.3, "cm"),
-        legend.title = element_text(size = 7),
-        legend.text = element_text(size = 7)) +
+dot_egf <-
+  dotplot_gg(rwhn_egf,
+             remove_common = T,
+             size = 2,
+             n_terms = 20)
+dot_egf[[1]] <- dot_egf[[1]] +
+  theme(
+    axis.text.x = element_text(size = 5.5),
+    legend.key.size = unit(.3, "cm"),
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7)
+  ) +
   ggtitle("RWHN ranks from EGF network")
 
-dot_tgf <- dotplot_gg(rwhn_tgf,remove_common = T, size = 2, n_terms = 20) 
-dot_tgf[[1]] <- dot_tgf[[1]] + 
-  theme(axis.text.x = element_text(size = 5.5),
-        legend.key.size = unit(.3, "cm"),
-        legend.title = element_text(size = 7),
-        legend.text = element_text(size = 7)) +
+dot_tgf <-
+  dotplot_gg(rwhn_tgf,
+             remove_common = T,
+             size = 2,
+             n_terms = 20)
+dot_tgf[[1]] <- dot_tgf[[1]] +
+  theme(
+    axis.text.x = element_text(size = 5.5),
+    legend.key.size = unit(.3, "cm"),
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7)
+  ) +
   ggtitle("RWHN ranks from TGF-a network")
 
-dots <- dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect")
-ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 8.3, height = 8, units = "in")
+
+dots <-
+  # dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect")
+ggsave(
+  "results/figs/rwhn_francavilla.tiff",
+  dots,
+  width = 8.3,
+  height = 8,
+  units = "in"
+)
 
 
 data <- rbind(tgf_fcm$g$data, egf_fcm$g$data) %>% 
@@ -140,8 +160,7 @@ raf1 <- ggplot() +
                 group = Identifier,color = Identifier),
             data = filter(data,
                           grepl("RAF1", Identifier)),
-            size = 1, linetype = "dashed") +
-  scale_color_viridis_d() +
+            size = 1) +
   facet_grid(stim ~ clusterindex) +
   scale_x_discrete(limits = c("1", "8", "40", "90")) +
   geom_hline(yintercept = 0, 

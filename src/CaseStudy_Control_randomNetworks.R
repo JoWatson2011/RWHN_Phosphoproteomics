@@ -103,6 +103,7 @@ gs <- lapply(gg, function(i){
     ggtitle(i$seed)
 })
 
+
 #Export
 lapply(1:length(gs), function(x) ggsave(filename = paste0("results/figs/controls/model_random_nw_cl", x , ".tiff"), plot = gs[[x]]+ guides(color = F, fill = F),
                                         width = 50, height = 50, units = "mm")

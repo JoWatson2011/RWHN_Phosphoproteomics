@@ -108,22 +108,27 @@ rwhn_tgf <- readRDS("results/data/rwhn_tgf_clusters.rds")
 
 dot_egf <- dotplot_gg(rwhn_egf,remove_common = T, size = 2, n_terms = 20)
 dot_egf[[1]] <- dot_egf[[1]] + 
-  theme(axis.text.x = element_text(size = 5.5),
-        legend.key.size = unit(.3, "cm"),
-        legend.title = element_text(size = 7),
-        legend.text = element_text(size = 7)) +
+  theme(axis.text.x = element_text(size = 4),
+        legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(10,10,10, 20)) +
   ggtitle("RWHN ranks from EGF network")
 
 dot_tgf <- dotplot_gg(rwhn_tgf,remove_common = T, size = 2, n_terms = 20) 
 dot_tgf[[1]] <- dot_tgf[[1]] + 
-  theme(axis.text.x = element_text(size = 5.5),
-        legend.key.size = unit(.3, "cm"),
-        legend.title = element_text(size = 7),
-        legend.text = element_text(size = 7)) +
+  theme(axis.text.x = element_text(size = 4),
+        legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(10,10,10,20)
+        ) +
   ggtitle("RWHN ranks from TGF-a network")
 
-dots <- dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect")
-ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 8.3, height = 8, units = "in")
+dots <- dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect") + plot_annotation(tag_levels = "A")
+ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 18.2, height = 15, units = "cm")
 
 
 data <- rbind(tgf_fcm$g$data, egf_fcm$g$data) %>% 

@@ -125,9 +125,17 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
     func <- dplyr::select(func, func1, func2) %>% unique() %>% na.omit()
   }else{
     
-    #The .rds file is the output of the specified .txt in /data
+
+    #The .rds file is the output of the `all edges bma wang.txt` file 
+    # (found in the supplementary materials of:
+    #
+    # Stoney RA, Ames RM, Nenadic G, Robertson DL, Schwartz JM.
+    # Disentangling the multigenic and pleiotropic nature of molecular function. 
+    # BMC Syst Biol. 2015;9 Suppl 6(Suppl 6):S3. doi:10.1186/1752-0509-9-S6-S3)
+    #
     # and the following code:
-    # pwnet <- readr::read_tsv("data/pathwaySimilarities_Stoney2015.txt",
+
+    # pwnet <- readr::read_tsv("data/all edges bma wang.txt",
     #                                   col_names = c("sim", "func1", "func2")) %>%
     #   mutate(func1 = tolower(func1),
     #          func2 = tolower(func2)) %>%

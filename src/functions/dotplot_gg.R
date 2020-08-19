@@ -38,10 +38,10 @@ dotplot_gg <- function(rwhn, seed_names = NULL, n_terms = 20, remove_common = F,
     theme_bw() +
     scale_y_discrete(name = "Cluster") +
     scale_color_distiller(name = "RWHN Rank", palette = col,
-                          guide = guide_colorbar(reverse = T)) +
+                          guide = guide_colorbar(reverse = T),
+                          breaks = c(1, seq(5, max(ggdf$rank_flt), 5))) +
     theme(axis.title.x = element_blank(),
-          axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-          plot.margin = margin(10,10,10,160)
+          axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
     ) +
     guides(size = F)
   

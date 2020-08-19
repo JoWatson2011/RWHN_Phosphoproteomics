@@ -17,6 +17,8 @@ source("src/functions/constructHetNet.R")
 source("src/functions/calculateRWHN.R")
 source("src/functions/dotplot_gg.R")
 
+set.seed(123)
+
 prots <- data.frame(node = c("RAF1", "MAP2K1", "MAP2K2", "MAPK1", "MAPK3", "JUND", "DUSP6", "RPS6KA3"),
                     level = c(1, 2, 2, 3, 3, 4, 5, 5),
                     stringsAsFactors = F)
@@ -85,7 +87,7 @@ prots <- c(prot$prot1, prot$prot2)
 ###
 enrichedTerms <- enrichr(prots, databases = "GO_Biological_Process_2018") %>%
   .$GO_Biological_Process_2018 %>%
-  filter(Adjusted.P.value < 0.01) %>%
+  filter(Adjusted.P.value < 0.05) %>%
   separate(Term,
            into = c("Term", "GOID"),
            sep = " \\(",
@@ -154,20 +156,52 @@ seed_l <- lapply(1:max(pp$clustering), function(i){
 
 rwhn <- lapply(seed_l, function(s){
   calculateRWHN(edgelists = edgelists,
-                verti = v,
+                verti = v[v$v != "positive regulation of DNA-binding transcription factor activity",],
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
                 weight_xy = 0.3,
-                weight_yz = 0.7) %>%
+                weight_yz = 0.7,
+                eps = 1/10^12) %>%
     filter(name %in% v[v$layer=="func",]$v)
 })
 
-saveRDS(rwhn, "results/data/rwhn_model.rds")
+#saveRDS(rwhn, "results/data/rwhn_model.rds")
 
-dot <- dotplot_gg(rwhn)
-ggsave(filename = "results/figs/rwhn_model_dotplot.tiff", 
-       plot = dot[[1]],
-       width = 209.804,
-       height = 142,
+dot <- lapply(1:length(rwhn), function(i){
+  rwhn[[i]] %>% 
+    mutate(seed = i) %>%  
+    mutate(rank = 1:nrow(.))
+}) %>% do.call(rbind, .) %>% 
+  group_by(name) %>% 
+  mutate(rank_dif = (rank - mean(rank))) %>% 
+  group_by(seed) %>%
+  mutate(rank_flt = 1:n()) %>% 
+  filter(rank_flt <= 25) %>% 
+  ungroup() %>% 
+  mutate(V1 = signif(V1, digits = 2),
+         name = factor(name, unique(name))) %>% 
+  ggplot(aes(y = as.factor(seed), x = name)) +
+  geom_count(aes(color = rank_flt)) +
+  theme_bw() +
+  scale_y_discrete(name = "Cluster") +
+  scale_color_distiller(name = "RWHN Rank", palette = "OrRd",
+                        guide = guide_colorbar(reverse = T)) +
+  theme(legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(0,0,0,120),
+        axis.text.x = element_text(size = 8, angle = 30, hjust = 1, vjust = 1)
+  ) +
+  guides(size = F) +
+  xlab("GOBP Term")
+dot
+
+ggsave(filename = "results/figs/rwhn_model_dotplot.tiff",
+       plot = dot + theme(legend.position = "none"),
+       width = 182,
+       height = 79,
        units = "mm")
+ggsave(filename = "results/figs/rwhn_model_dotplot_lgd.tiff",
+       plot = dot + theme(legend.direction = "horizontal"))

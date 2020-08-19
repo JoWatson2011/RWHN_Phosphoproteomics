@@ -112,21 +112,16 @@ tot_lap <- ruprecht_sty %>%
 set.seed(1)
 wss <- data.frame(
   type = c(
-    rep("All significant", 15),
-    rep("Just * parental", 15),
-    rep("Just * resistant", 15)
+    rep("Parental+lap. or Resistant+lap. cells", 15),
+    rep("Resistant+lap. cells", 15)
   ),
-  cl = rep(1:15, 3),
+  col = c(rep("#00798c",15),
+  rep("#d1495b",15)),
+  cl = rep(1:15, 2),
   wss = c(
     sapply(1:15,
            function(k) {
              kmeans(tot_lap[, 4:5],
-                    k, nstart = 50,
-                    iter.max = 15)$tot.withinss
-           }),
-    sapply(1:15,
-           function(k) {
-             kmeans(par_lap[, 2],
                     k, nstart = 50,
                     iter.max = 15)$tot.withinss
            }),
@@ -139,16 +134,23 @@ wss <- data.frame(
   ),
   stringsAsFactors = F
 )
-ggplot(wss, aes(x = cl, y = wss, color = type)) +
+elbow <- ggplot(wss, aes(x = cl, y = wss, color = type)) +
   geom_point() +
   geom_line() +
-  xlab("Number of clusters K") +
+  scale_color_discrete("Sites significantly changing in...") +
+  xlab("Number of clusters (k)") +
   ylab("Total within-clusters sum of squares") +
-  scale_color_discrete()
+  theme_minimal() +
+  theme(legend.justification = c(1, 1), 
+        legend.position = c(1, 1),
+        legend.box.background = element_rect(color = "black", fill = "white"),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 5),
+        axis.title = element_text(size = 5),
+        axis.text = element_text(size = 5)
+  )
 
 
-par_lap_cl <- kmeans(par_lap[, 2], 2)$cluster
-names(par_lap_cl) <- par_lap$id
 
 res_lap_cl <- kmeans(res_lap[, 2], 4)$cluster
 names(res_lap_cl) <- res_lap$id
@@ -157,111 +159,63 @@ tot_lap_cl <- kmeans(tot_lap[, 4:5], 5)$cluster
 names(tot_lap_cl) <- tot_lap$id
 
 
-sites <- data.frame(
-  gene = c(
-    "HNRNPU",
-    "SRRM2",
-    "DDX23",
-    "NCBP1",
-    "SRRM2",
-    "PCBP1",
-    "PRPF4B",
-    "SRRM2",
-    "CDK1",
-    "CDK1",
-    "SRC",
-    "IGR1R",
-    "LDAH",
-    "ALDOA",
-    "ALDOA",
-    "PFKP",
-    "GAPDH",
-    "ENO1",
-    "PKM",
-    "PCAM",
-    "PYGB",
-    "PGM1",
-    "PGM2",
-    "PFKB2",
-    "HSP90AB1",
-    "BAD",
-    "FOXO3",
-    "SRC"
-  ),
-  sites = c(
-    "S59",
-    "S1132",
-    "S107",
-    "S22",
-    "S1987",
-    "S264",
-    "S431",
-    "S970",
-    "T161",
-    "NA",
-    "NA",
-    "NA",
-    "Y16",
-    "S39",
-    "S46",
-    "S386",
-    "S83",
-    "Y44",
-    "Y175",
-    "Y92",
-    "T59",
-    "S117",
-    "S165",
-    "S466",
-    "S255",
-    "S99",
-    "T32",
-    "S17"
-  ),
-  paperDescription = c(
-    "Splicesome",
-    "Splicesome",
-    "Splicesome",
-    "Splicesome",
-    "Splicesome",
-    "Splicesome",
-    "Splicesome",
-    "Splicesome",
-    "CC. strongest observed activation of any kinase",
-    NA,
-    NA,
-    NA,
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycotic enzymes.
-                       Highly incresed in resistance",
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycotic enzymes. Highly incresed in resistance",
-    "Glycogen catabolism",
-    "Glycogen catabolism",
-    "Glycogen catabolism",
-    NA,
-    NA,
-    NA,
-    NA,
-    NA
-  ),
-  stringsAsFactors = F
-) %>%
-  mutate(id = paste0(gene, "_", sites)) %>%
-  merge(.,
-        data.frame(id = names(tot_lap_cl), tot_cl = tot_lap_cl),
-        by = "id",
-        all.x = T) %>%
-  merge(.,
-        data.frame(id = names(res_lap_cl), res_cl = res_lap_cl),
-        by = "id",
-        all.x = T)
-write.csv(sites, "results/data/ruprecht_clusters.csv")
+ggResCl <- lapply(1:max(res_lap_cl), function(i){
+  ruprecht_sty %>% 
+    filter(id %in% names(res_lap_cl[res_lap_cl == i])) %>% 
+    filter(SignificantHL == "+") %>% 
+    dplyr::select(grep("HL_", colnames(.))) %>% 
+    pivot_longer(cols = everything()) %>% 
+    summarise(mean = mean(value, na.rm = T),
+              sd = sd(value, na.rm = T)) %>% 
+    mutate(cl = i,
+           exp = "res")
+}) %>% do.call(rbind, .) %>% 
+  ggplot(aes(x = as.factor(cl), color = as.factor(cl))) +
+  geom_errorbar(aes(ymin = mean-sd, ymax = mean+sd), size = 1, width = .2) +
+  geom_point(aes(y = mean), size = 2) +
+  theme_minimal() +
+  theme(strip.text = element_blank(),
+              panel.border = element_rect(fill = NA, color = "black"), 
+              legend.position = "none",
+        axis.title = element_text(size = 5),
+        axis.text.y = element_text(size = 5)
+        ) +
+  ylab("Average change from Parental (Untreated)") +
+  xlab("Cluster")
 
+ggTotCl <- lapply(1:max(tot_lap_cl), function(i){
+  ruprecht_sty %>% 
+    filter(id %in% names(tot_lap_cl[tot_lap_cl == i])) %>% 
+    filter(SignificantHL == "+" | SignificantML == "+") %>% 
+    dplyr::select(grep("[HM]L_", colnames(.))) %>% 
+    pivot_longer(cols = everything()) %>% 
+    mutate(name = gsub("_R[1234]", "", name)) %>% 
+    group_by(name) %>% 
+    summarise(mean = mean(value, na.rm = T),
+              sd = sd(value, na.rm =T)) %>% 
+    mutate(namecl = paste0(i, "_", name),
+           cl = i)
+}) %>% do.call(rbind, .) %>% 
+  ggplot(aes(x = factor(name, levels = c("ML", "HL")), y = mean, group = cl, color = as.factor(cl))) +
+  geom_line(size = 1) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean-sd, ymax = mean+sd), width = .2, size = 1) +
+  facet_wrap(~cl, nrow = 1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        panel.border = element_rect(fill = NA, color = "black"), 
+        legend.position = "none",
+        axis.title = element_text(size = 5),
+        axis.text = element_text(size = 5)
+        ) +
+  scale_x_discrete(name = "",
+                   labels = c("Parental +lap.", "Resistant + lap.")) +
+  ylab("Average change from Parental (Untreated)")
+
+gg_cl <- elbow + (ggTotCl / ggResCl) + 
+  plot_layout(widths = c(1,2)) +
+  plot_annotation(tag_levels = 'A')
+ggsave("results/figs/Ruprecht_Clusters.tiff", gg_cl, width = 18.2, height = 10, units = "cm")
 
 # Construct heterogeneous network
 par_mlnw <- constructHetNet(stytxt = ruprecht_sty, 
@@ -354,21 +308,35 @@ rwhn_tot <- readRDS("results/data/rwhn_ruprecht_tot.rds")
 
 # visualise results with dot plot
 
-dot_res_diff <- dotplot_gg(rwhn_res, n_terms = 30, remove_common = T, col = "PuBu")
-dot_tot_diff <- dotplot_gg(rwhn_tot, n_terms =30, remove_common = T, col = "PuBu")
+dot_res_diff <- dotplot_gg(rwhn_res, n_terms = 30, remove_common = T, col = "PuBu", size = 3)
+dot_tot_diff <- dotplot_gg(rwhn_tot, n_terms =30, remove_common = T, col = "PuBu", size = 3)
 
 
 dot_res_diff[[1]]  <- dot_res_diff[[1]] + 
+  theme(axis.text.x = element_text(size = 5),
+        legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(10,10,10,50)
+  ) +
   xlab("KEGG pathways") +
   ggtitle("RWHN results from \`lapatanib-resistant\` network")
 dot_tot_diff[[1]]  <- dot_tot_diff[[1]] +
+  theme(axis.text.x = element_text(size = 5),
+        legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(10,10,10,50)
+  ) +
   xlab("KEGG pathway")
   ggtitle("RWHN results from \'Total\' network")
 
 gg <- dot_tot_diff[[1]]  / dot_res_diff[[1]] + plot_layout(guides = "collect")
 gg <- gg + plot_annotation(tag_levels = "A")
 
-ggsave("results/figs/rwhn_ruprecht_kegg_patchwork.tiff", width = 11.7, height = 10, units= "in")
+ggsave("results/figs/rwhn_ruprecht_kegg_patchwork.tiff", gg, width = 18.2, height = 15, units = "cm")
 
 
 ######
@@ -427,10 +395,23 @@ dot_res_diff <- dotplot_gg(rwhn_res_GO, n_terms = 20, remove_common = T, size = 
 dot_tot_diff <- dotplot_gg(rwhn_tot_GO, n_terms = 20, remove_common = T, size = 2)
 
 dot_res_diff[[1]]  <- dot_res_diff[[1]] + 
-  theme(axis.text.x = element_text(size = 7)) +
+  theme(axis.text.x = element_text(size = 4),
+        legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(10,10,10,20)
+  ) +
   xlab("GOBP Terms") +
   ggtitle("RWHN results from \`lapatanib-resistant\` network")
-dot_tot_diff[[1]]  <- dot_tot_diff[[1]] + theme(axis.text.x = element_text(size = 7))  +
+dot_tot_diff[[1]]  <- dot_tot_diff[[1]] +
+  theme(axis.text.x = element_text(size = 4),
+        legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        plot.margin = margin(10,10,10,20)
+) +
   xlab("GOBP Terms") +
   ggtitle("RWHN results from \'Total\' network")
 
@@ -438,4 +419,4 @@ dot_tot_diff[[1]]  <- dot_tot_diff[[1]] + theme(axis.text.x = element_text(size 
 gg <- dot_tot_diff[[1]]  / dot_res_diff[[1]] + plot_layout(guides = "collect")
 gg <- gg + plot_annotation(tag_levels = "A")
 
-ggsave("results/figs/rwhn_ruprecht_GO_patchwork.tiff", width = 10, height = 8, units= "in")
+ggsave("results/figs/rwhn_ruprecht_GO_patchwork.tiff", gg, width = 18.2, height = 15, units = "cm")

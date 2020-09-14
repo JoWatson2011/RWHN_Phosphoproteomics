@@ -306,6 +306,106 @@ rwhn_res <- readRDS("results/data/rwhn_ruprecht_res.rds")
 rwhn_tot <- readRDS("results/data/rwhn_ruprecht_tot.rds")
 
 
+## res Filter top 5%
+rwhn_res_flt <-  lapply(1:length(rwhn_res), function(i){
+  rwhn_res[[i]] %>% 
+    mutate(seed = i)
+}) %>% do.call(rbind, .) %>% 
+  group_by(name) %>% 
+  mutate(rank_dif = (rank - mean(rank)),
+         color = ifelse(rank_dif == 0, T, NA),
+         V1 = signif(V1, digits = 2)) %>% 
+  filter(rank_dif > 0) %>%                    # Filter terms that appear in the same position in all conditions
+  ungroup() %>%
+  group_split(seed) %>% 
+  lapply(., function(i){
+    pct <- i[1,]$V1                             # Filter top 5% of terms ( with a messy loop!!)
+    df <- i[1,]
+    
+    for(x in 2:nrow(i)){
+      if(pct < 0.05){
+        df <- rbind(df, i[x,])
+        pct <- pct + i[x,]$V1
+      }else{
+        break
+      }
+    }
+    
+    return(df)
+  }) %>% 
+  do.call(rbind,.)
+
+sighm_res <- ggplot(rwhn_res_flt, aes(x = as.factor(seed), y = name)) +
+  geom_tile(aes(fill = V1, color = color)) +
+  scale_color_manual(values = c("red", NA), name = "Probability") +
+  guides(color = FALSE) +
+  xlab("Seed nodes") +
+  ylab("GOBP Term") +
+  theme(legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        axis.text.y = element_text(size = 4.5),
+        panel.background = element_rect(fill = "black"), 
+        panel.grid = element_blank()) +
+  scale_x_discrete(position = "top")  
+
+ggsave(filename = "results/figs/rwhn_sig_Ruprecht_res.tiff",
+       plot = sighm_res,
+       width = 182,
+       height = 79,
+       units = "mm")  
+
+## tot Filter top 5%
+rwhn_tot_flt <- lapply(1:length(rwhn_tot), function(i){
+  rwhn_tot[[i]] %>% 
+    mutate(seed = i)
+}) %>% do.call(rbind, .) %>% 
+  group_by(name) %>% 
+  mutate(rank_dif = (rank - mean(rank)),
+         color = ifelse(rank_dif == 0, T, NA),
+         V1 = signif(V1, digits = 2)) %>% 
+  filter(rank_dif > 0) %>%                    # Filter terms that appear in the same position in all conditions
+  ungroup() %>% 
+  group_split(seed) %>% 
+  lapply(., function(i){
+    pct <- i[1,]$V1                             # Filter top 5% of terms ( with a messy loop!!)
+    df <- i[1,]
+    
+    for(x in 2:nrow(i)){
+      if(pct < 0.05){
+        df <- rbind(df, i[x,])
+        pct <- pct + i[x,]$V1
+      }else{
+        break
+      }
+    }
+    
+    return(df)
+  }) %>% 
+  do.call(rbind,.)
+
+sighm_tot <- ggplot(rwhn_tot_flt, aes(x = as.factor(seed), y = name)) +
+  geom_tile(aes(fill = V1, color = color)) +
+  scale_color_manual(values = c("red", NA), name = "Probability") +
+  guides(color = FALSE) +
+  xlab("Seed nodes") +
+  ylab("GOBP Term") +
+  theme(legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        axis.text.y = element_text(size = 4.5),
+        panel.background = element_rect(fill = "black"), 
+        panel.grid = element_blank()) +
+  scale_x_discrete(position = "top")  
+
+ggsave(filename = "results/figs/rwhn_sig_Ruprecht_tot.tiff",
+       plot = sighm_tot,
+       width = 182,
+       height = 79,
+       units = "mm")  
+
 # visualise results with dot plot
 
 dot_res_diff <- dotplot_gg(rwhn_res, n_terms = 30, remove_common = T, col = "PuBu", size = 3)
@@ -337,6 +437,127 @@ gg <- dot_tot_diff[[1]]  / dot_res_diff[[1]] + plot_layout(guides = "collect")
 gg <- gg + plot_annotation(tag_levels = "A")
 
 ggsave("results/figs/rwhn_ruprecht_kegg_patchwork.tiff", gg, width = 18.2, height = 15, units = "cm")
+
+######################
+# Standard ORA analysis
+######################
+
+## Resistant
+enrichedTerms_res <- lapply(1:max(res_lap_cl), function(i){
+  ids <- names(res_lap_cl[res_lap_cl == i ] )
+  cl_prots <- unique(gsub("_.*", "", ids))
+  
+  enriched <- enrichr(cl_prots, databases = "KEGG_2019_Human") %>% 
+    .[[1]] %>%
+    filter(Adjusted.P.value <= 0.05)  %>% 
+    mutate(cluster = i)
+  return(enriched)
+}) %>% 
+  do.call(rbind, .)
+
+enrichedTerms_flt_res <- lapply(1:max(res_lap_cl), function(i){
+  df <- enrichedTerms_res[enrichedTerms_res$cluster ==i, ] %>% 
+    arrange(desc(Adjusted.P.value)) %>% 
+    slice_min(Adjusted.P.value, n = 10) %>% 
+    mutate(rwhn = apply(., 1, function(x) {
+      if(x["Term"] %in% dot_res_diff[[2]]$name){
+        ifelse(i %in% dot_res_diff[[2]][dot_res_diff[[2]]$name == x["Term"],]$seed, T, NA)
+      }else{
+        NA
+      }
+    }
+    )
+    )
+  if(nrow(df) > 0){
+    df <- mutate(df, rank = 1:n())
+  }
+}) %>% 
+  do.call(rbind, .) %>% 
+  mutate(V1 = signif(Adjusted.P.value, digits = 2),
+         name = factor(Term, unique(Term))) %>% 
+  ggplot(aes(y = name, x = as.factor(cluster))) +
+  geom_tile(aes(fill = as.factor(cluster))) +
+  theme_bw() +
+  geom_point(aes(shape = rwhn)) +
+  theme(legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        #axis.text.x = element_text(size = 8, angle = 30, hjust = 1, vjust = 1),
+        axis.text.y = element_text(size = 4.5),
+        legend.position = "none", 
+        panel.background = element_rect(fill = "black"), 
+        panel.grid = element_blank()
+        
+  ) +
+  scale_x_discrete(position = "top") +
+  ylab("Pathway") +
+  xlab("") +
+  ggtitle("Resitant")
+
+ggsave(filename = "results/figs/standardORA_Ruprecht_Res.tiff",
+       plot = enrichedTerms_flt_res,
+       width = 55,
+       height = 80,
+       units = "mm")
+
+## Total
+enrichedTerms_tot <- lapply(1:max(tot_lap_cl), function(i){
+  ids <- names(tot_lap_cl[tot_lap_cl == i ] )
+  cl_prots <- unique(gsub("_.*", "", ids))
+  
+  enriched <- enrichr(cl_prots, databases = "KEGG_2019_Human") %>% 
+    .[[1]] %>%
+    filter(Adjusted.P.value <= 0.05)  %>% 
+    mutate(cluster = i)
+  return(enriched)
+}) %>% 
+  do.call(rbind, .)
+
+enrichedTerms_flt_tot <- lapply(1:max(tot_lap_cl), function(i){
+  df <- enrichedTerms_tot[enrichedTerms_tot$cluster ==i, c("Term", "Adjusted.P.value", "cluster")] %>% 
+    arrange(desc(Adjusted.P.value)) %>% 
+    slice_min(Adjusted.P.value, n = 10) %>% 
+    mutate(rwhn = apply(., 1, function(x) {
+      if(x["Term"] %in% dot_tot_diff[[2]]$name){
+        ifelse(i %in% dot_tot_diff[[2]][dot_tot_diff[[2]]$name == x["Term"],]$seed, T, NA)
+      }else{
+        NA
+      }
+    }
+    )
+    )
+
+  return(df)
+}) %>% 
+  do.call(rbind, .) %>% 
+  mutate(name = factor(Term, unique(Term))) %>% 
+  ggplot(aes(y = name, x = as.factor(cluster))) +
+  geom_tile(aes(fill = as.factor(cluster))) +
+  theme_bw() +
+ # geom_point(aes(shape = rwhn)) +
+  theme(legend.key.size = unit(.5, "cm"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8), 
+        title = element_text(size = 8),
+        axis.text.y = element_text(size = 4.5),
+        legend.position = "none", 
+        panel.background = element_rect(fill = "black"), 
+        panel.grid = element_blank()
+        
+  ) +
+  scale_x_discrete(position = "top") +
+  ylab("Pathway") +
+  xlab("") +
+  ggtitle("Total")
+
+ggsave(filename = "results/figs/standardORA_Ruprecht_Tot.tiff",
+       plot = enrichedTerms_flt_tot,
+       width = 55,
+       height = 80,
+       units = "mm")
+
+
 
 
 ######

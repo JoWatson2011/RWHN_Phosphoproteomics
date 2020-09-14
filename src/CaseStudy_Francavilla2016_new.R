@@ -5,12 +5,14 @@ library(igraph)
 library(e1071)
 library(enrichR)
 library(patchwork)
+library(ggplot2)
 # From Bioconductor
 library(Mfuzz)
 library(GOSemSim)
 library(AnnotationDbi)
 library(GO.db)
 # From src/
+source("src/functions/heatmap_RWHNsig.R")
 source("src/functions/imputePhosphoData.R")
 source("src/functions/mfuzz-ggplot.R")
 source("src/functions/simplifyGO.R")
@@ -34,10 +36,6 @@ colnames(cfr_sty) <- gsub(" ", "_", colnames(cfr_sty))
 
 # Filter data with > 2 missing values and
 # impute phosphorylated sites regulated by EGF or TGF-a
-# egf <- cfr_sty %>% 
-#   dplyr::select(id, grep("EGF", colnames(cfr_sty))) %>% 
-#   filter_missing(allowed = 2) %>% 
-#   mutate_at(vars(matches("ratio")), imputeTruncNorm)
 
 impute_fun <- function(i){
   data <- imputeLCMD::impute.QRILC(as.matrix(i))[[1]]
@@ -77,8 +75,8 @@ seed_l <- lapply(1:max(egf_fcm$clustering), function(i){
 })
 rwhn_egf <- lapply(seed_l, function(s){
   calculateRWHN(edgelists = egf_mlnw$edgelists,
-                verti = egf_mlnw$v[egf_mlnw$v$v != "import into nucleus",],
-               # verti = egf_mlnw$v,
+                #verti = egf_mlnw$v[egf_mlnw$v$v != "import into nucleus",],
+                verti = egf_mlnw$v,
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
@@ -86,7 +84,7 @@ rwhn_egf <- lapply(seed_l, function(s){
                 weight_yz = 0.7) %>%
     filter(name %in% egf_mlnw$v[egf_mlnw$v$layer=="func",]$v)
 })
-#saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters.rds")
+saveRDS(rwhn_egf, "results/data/rwhn_egf_clusters_new.rds")
 
 #TGFa
 seed_l <- lapply(1:max(tgf_fcm$clustering), function(i){
@@ -102,35 +100,60 @@ rwhn_tgf <- lapply(seed_l, function(s){
                 weight_yz = 0.7) %>%
     filter(name %in% tgf_mlnw$v[tgf_mlnw$v$layer=="func",]$v)
 })
-# saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters.rds")
-# 
-# # visualise results with dot plot
-# rwhn_egf <- readRDS("results/data/rwhn_egf_clusters.rds")
-# rwhn_tgf <- readRDS("results/data/rwhn_tgf_clusters.rds")
+saveRDS(rwhn_tgf, "results/data/rwhn_tgf_clusters_new.rds")
+
+
+rwhn_egf <- readRDS("results/data/rwhn_egf_clusters_new.rds")
+rwhn_tgf <- readRDS("results/data/rwhn_tgf_clusters_new.rds")
+
+## EGF Filter top 5%
+sighm_egf <- heatmap_RWHN(rwhn_egf, ylab = "GOBP Term", ylab_text_size = 4)
+
+ggsave(filename = "results/figs/rwhn_sig_CFR_egf.tiff",
+       plot = sighm_egf,
+       width = 182,
+       height = 85,
+       units = "mm")  
+
+## tgf Filter top 5%
+
+sighm_tgf <- heatmap_RWHN(rwhn_tgf, "GOBP Term")
+
+ggsave(filename = "results/figs/rwhn_sig_CFR_tgf.tiff",
+       plot = sighm_tgf,
+       width = 182,
+       height = 79,
+       units = "mm")  
+
+
+# visualise results with dot plot
+rwhn_egf <- readRDS("results/data/rwhn_egf_clusters_new.rds")
+rwhn_tgf <- readRDS("results/data/rwhn_tgf_clusters_new.rds")
+
 
 dot_egf <- dotplot_gg(rwhn_egf,remove_common = T, size = 2, n_terms = 20)
 dot_egf[[1]] <- dot_egf[[1]] + 
-  theme(axis.text.x = element_text(size = 4),
+  theme(axis.text.x = element_text(size = 4.5),
         legend.key.size = unit(.5, "cm"),
         legend.title = element_text(size = 8),
         legend.text = element_text(size = 8), 
         title = element_text(size = 8),
-        plot.margin = margin(10,10,10, 20)) +
+        plot.margin = margin(10,10,20, 45)) +
   ggtitle("RWHN ranks from EGF network")
 
 dot_tgf <- dotplot_gg(rwhn_tgf,remove_common = T, size = 2, n_terms = 20) 
 dot_tgf[[1]] <- dot_tgf[[1]] + 
-  theme(axis.text.x = element_text(size = 4),
+  theme(axis.text.x = element_text(size = 4.5),
         legend.key.size = unit(.5, "cm"),
         legend.title = element_text(size = 8),
         legend.text = element_text(size = 8), 
         title = element_text(size = 8),
-        plot.margin = margin(10,10,10,20)
+        plot.margin = margin(10,10,10,40)
         ) +
   ggtitle("RWHN ranks from TGF-a network")
 
 dots <- dot_egf[[1]] / dot_tgf[[1]] + plot_layout(guides = "collect") + plot_annotation(tag_levels = "A")
-#ggsave("results/figs/rwhn_francavilla.tiff", dots, width = 18.2, height = 15, units = "cm")
+ggsave("results/figs/rwhn_francavilla_new.tiff", dots, width = 18.2, height = 15, units = "cm")
 
 
 data <- rbind(tgf_fcm$g$data, egf_fcm$g$data) %>% 
@@ -163,9 +186,9 @@ raf1_rab7 <- raf1 +
   )
             #color = "Purple")
 
-# ggsave("results/figs/rwhn_francavilla_raf1.tiff", raf1, width = 8.3, height = 3.7, units = "in")
-# 
-# ggsave("results/figs/rwhn_francavilla_raf1rab7.tiff", raf1_rab7, width = 8.3, height = 3.7, units = "in")
+ggsave("results/figs/rwhn_francavilla_raf1_new.tiff", raf1, width = 8.3, height = 3.7, units = "in")
+
+ggsave("results/figs/rwhn_francavilla_raf1rab7_new.tiff", raf1_rab7, width = 8.3, height = 3.7, units = "in")
 
 # To determine the frequency of common sites
 egf_com <- dotplot_gg(rwhn_egf,remove_common = F, size = 2, n_terms = 20)  %>%
@@ -188,7 +211,7 @@ freq <- sapply(simpl$GO2Gene,length)
 freq_p <- freq / sum(freq) * 100
 data.frame(pct = freq_p[names(freq_p) %in% termid$GOID],
            GOID = names(freq_p)[names(freq_p) %in% termid$GOID])
-#write.csv(termid, "results/data/Table4_commonTermsCFRdata.csv")
+write.csv(termid, "results/data/Table4_commonTermsCFRdata_new.csv")
 
 ######################
 # Standard GO analysis
@@ -262,11 +285,11 @@ enrichedTerms_flt_egf <- lapply(1:max(egf_fcm$clustering), function(i){
   xlab("") +
   ggtitle("EGF GO analysis")
 
-# ggsave(filename = "results/figs/standardORA_CFR_egf.tiff",
-#        plot = enrichedTerms_flt_egf,
-#        width = 70,
-#        height = 80,
-#        units = "mm")
+ggsave(filename = "results/figs/standardORA_CFR_egf_new.tiff",
+       plot = enrichedTerms_flt_egf,
+       width = 70,
+       height = 80,
+       units = "mm")
 
 
 # TGFa
@@ -336,8 +359,8 @@ enrichedTerms_flt_tgf <- lapply(1:max(tgf_fcm$clustering), function(i){
   xlab("") +
   ggtitle("tgf GO analysis")
 
-# ggsave(filename = "results/figs/standardORA_CFR_tgf.tiff",
-#        plot = enrichedTerms_flt_tgf,
-#        width = 70,
-#        height = 80,
-#        units = "mm")
+ggsave(filename = "results/figs/standardORA_CFR_tgf_new.tiff",
+       plot = enrichedTerms_flt_tgf,
+       width = 70,
+       height = 80,
+       units = "mm")

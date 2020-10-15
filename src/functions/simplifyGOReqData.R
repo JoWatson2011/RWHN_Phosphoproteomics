@@ -2,6 +2,8 @@
 # semantically similar GO terms
 
 simplifyGOReqData <- function(){
+  
+  if(length(grep("simplifyGOreqdata.rds", list.files("data/"))) < 1) {
   suppressPackageStartupMessages(library("org.Hs.eg.db"))
   suppressPackageStartupMessages(library("GO.db"))
   suppressPackageStartupMessages(library("GOSemSim"))
@@ -21,10 +23,22 @@ simplifyGOReqData <- function(){
   
   childTerms <- as.list(GOBPCHILDREN)
   
+  saveRDS(list(gene2GO = gene2GO,
+                        GOterms=GOterms,
+                        GO2Gene=GO2Gene,
+                        highFreqTerms=highFreqTerms,
+                        semData = semData,
+                        childTerms=childTerms),
+          "data/simplifyGOreqdata.rds")
+  
   return(list(gene2GO = gene2GO,
               GOterms=GOterms,
               GO2Gene=GO2Gene,
               highFreqTerms=highFreqTerms,
               semData = semData,
               childTerms=childTerms))
+  
+  }else{
+    return(readRDS("data/simplifyGOreqdata.rds"))
+  }
 }

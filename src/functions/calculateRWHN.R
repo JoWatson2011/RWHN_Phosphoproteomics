@@ -113,6 +113,8 @@ calculateTransitionMatrix <- function(trans, hetNet, vert){
                     vRows = vert[vert$transition == "y",]$v,
                     trans = trans)
   zy_tp <- t(yz_tp)
+
+  
   
   inter_tm <- function(inter, intra_names, trans){
     ### Which nodes in inter have degree 0 in intra ?
@@ -225,7 +227,8 @@ calculateTransitionMatrix <- function(trans, hetNet, vert){
   z_tp <- inter_tm(inter = hetNet[["z"]], 
                    intra_names = colnames(hetNet[["yz"]]),
                    trans = trans)
-  
+
+
   # # create the full transition matrix
   # # |siteMatrix (x)   Site2Prot (yx)         0         |
   # # |Prot2Site (xy)   protMatrix (y)   prot2func (zy)  |
@@ -239,6 +242,9 @@ calculateTransitionMatrix <- function(trans, hetNet, vert){
                  nrow = nrow(z_tp),
                  ncol = ncol(x_tp),
                  dimnames = list(rownames(z_tp), colnames(x_tp)))
+  
+  yz_tp <- yz_tp[,colnames(yz_tp)[colnames(yz_tp) %in% colnames(z_tp)]]
+  zy_tp <- zy_tp[rownames(zy_tp)[rownames(zy_tp) %in% rownames(z_tp)],]
   
   # tmp1 <- cbind(x_tp, xy_tp[rownames(x_tp), colnames(y_tp), drop = F], top0)
   # tmp2 <- cbind(yx_tp[rownames(y_tp), colnames(x_tp), drop = F], y_tp, yz_tp[rownames(y_tp), colnames(z_tp), drop = F])

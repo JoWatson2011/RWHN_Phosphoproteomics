@@ -64,7 +64,7 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
                                module = as.integer(igraph::membership(nw)),
                                stringsAsFactors = F)
       
-      cluster_nw <- lapply(1:max(cluster_nw$module), function(x){
+      cluster_nw <- lapply(unique(cluster_nw$module), function(x){
         sample <- cluster_nw %>%
           filter(module == x)
         

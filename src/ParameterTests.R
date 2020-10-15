@@ -3,7 +3,6 @@ library(dplyr)
 library(tidyr)
 library(igraph)
 library(ggplot2)
-library(ggridges)
 source("src/functions/calculateRWHN.R")
 
 # Parameter ranges
@@ -17,7 +16,7 @@ mlnw <- readRDS("results/data/mlnw_model.rds")
 
 # Speed up processing with library Parallel
 no_cores <- detectCores() - 1
-cl <- makeCluster(no_cores, type = "FORK")
+cl <- makeCluster(no_cores)
 
 # Calculate RWHN with toy network, each cluster set to seed
 # and each set of parameters
@@ -106,7 +105,7 @@ parameters <- data.frame(trans = c(seq(0.2, 0.8, 0.1), rep(0.5, 21)),
                          param_altered = c(rep("Transition Probability", 7),
                                            rep("Restart Probability", 7),
                                            rep("Protein Node Weighting", 7),
-                                           rep("Fucntion Node Weighting.", 7)),
+                                           rep("Function Node Weighting.", 7)),
                          stringsAsFactors = F
 ) 
 
@@ -147,8 +146,7 @@ forhm <- lapply(1:length(rwhn), function(i){
 
 
 g <- ggplot(forhm, aes(x = rank, y = name, fill = n)) +
-  facet_grid(seed ~ param_altered) + # nrow = 5, ncol = 4, strip.position = "right") +
-  #geom_density_ridges(aes(height = n), stat = "identity") +
+  facet_grid(seed ~ param_altered) 
   geom_tile() +
   scale_fill_gradient("", low = "red", high = "blue") +
   ylab("GO Term") +

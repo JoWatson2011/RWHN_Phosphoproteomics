@@ -4,6 +4,7 @@ library(tidyr)
 library(igraph)
 library(e1071)
 library(enrichR)
+library(patchwork)
 # From Bioconductor
 library(Mfuzz)
 library(GOSemSim)
@@ -15,9 +16,9 @@ source("src/functions/simplifyGO.R")
 source("src/functions/simplifyGOReqData.R")
 source("src/functions/constructHetNet.R")
 source("src/functions/calculateRWHN.R")
-source("src/functions/dotplot_gg.R")
-
-set.seed(123)
+source("src/functions/heatmap_RWHNsig.R")
+source("src/functions/overrepresentationAnalysis.R")
+source("src/functions/GOspecificity.R")
 
 prots <- data.frame(node = c("RAF1", "MAP2K1", "MAP2K2", "MAPK1", "MAPK3", "JUND", "DUSP6", "RPS6KA3"),
                     level = c(1, 2, 2, 3, 3, 4, 5, 5),
@@ -167,171 +168,74 @@ rwhn <- lapply(seed_l, function(s){
     filter(name %in% v[v$layer=="func",]$v)
 })
 
-#saveRDS(rwhn, "results/data/rwhn_model.rds")
+saveRDS(rwhn, "results/data/rwhn_model.rds")
 
+#######
+# Export, Visualise, etc.
+#######
+rwhn <- readRDS("results/data/rwhn_model.rds")
 
+rwhn_df <- lapply(1:length(rwhn), function(i)
+  mutate(rwhn[[i]], 
+         seed = i,
+         rank = 1:nrow(rwhn[[i]])
+         )
+  ) %>% 
+  do.call(cbind, .) 
+readr::write_csv(rwhn_df, "results/data/model_rwhn_results.csv")
 
-
-
-
-rwhn_flt <- lapply(rwhn, function(i){
-  pct <- i[1,]$V1
-  df <- i[1,]
-
-  for(x in 2:nrow(i)){
-    if(pct < 0.05){
-      df <- rbind(df, i[x,])
-      pct <- pct + i[x,]$V1
-    }else{
-      break
-    }
-  }
-  
-  return(df)
-}) 
-
-ggdf <- lapply(1:length(rwhn_flt), function(i){
-  tmp[[i]] %>% 
-    mutate(seed = i)
-}) %>% do.call(rbind, .) %>% 
-   mutate(rank_dif = (rank - mean(rank)),
-          color = ifelse(rank_dif > 0, T, NA),
-          V1 = signif(V1, digits = 2))
-
-sighm <- ggplot(ggdf, aes(x = as.factor(seed), y = name)) +
-  geom_tile(aes(fill = V1, color = color)) +
-  scale_color_manual(values = c("red", NA), name = "Probability") +
-  guides(color = FALSE) +
-  xlab("Seed nodes") +
-  ylab("GOBP Term") +
-  theme(legend.key.size = unit(.5, "cm"),
-        legend.title = element_text(size = 8),
-        legend.text = element_text(size = 8), 
-        title = element_text(size = 8),
-        axis.text.y = element_text(size = 4.5),
-        panel.background = element_rect(fill = "black"), 
-        panel.grid = element_blank()) +
-  scale_x_discrete(position = "top")  
-  
+sighm <- heatmap_RWHN(rwhn, ylab = "GOBP Term", colours = c(low = "#ffe6e8", high = "#f74451"))
 ggsave(filename = "results/figs/rwhn_sig_model.tiff",
        plot = sighm,
        width = 182,
        height = 79,
        units = "mm")  
+ggsave(filename = "results/figs/rwhn_sig_model_slim.tiff",
+       plot = sighm,
+       width = 100,
+       height = 80,
+       units = "mm")  
 
-
-dot <- lapply(1:length(rwhn), function(i){
-  rwhn[[i]] %>% 
-    mutate(seed = i) %>%  
-    mutate(rank = 1:nrow(.))
-}) %>% do.call(rbind, .) %>% 
-  group_by(seed) %>%
-  mutate(rank_flt = 1:n()) %>% 
-  filter(rank_flt <= 25) %>% 
-  ungroup() %>% 
-  mutate(V1 = signif(V1, digits = 2),
-         name = factor(name, unique(name))) %>% 
-  ggplot(aes(y = as.factor(seed), x = name)) +
-  geom_count(aes(color = rank_flt)) +
-  theme_bw() +
-  scale_y_discrete(name = "Cluster") +
-  scale_color_distiller(name = "RWHN Rank", palette = "OrRd",
-                        guide = guide_colorbar(reverse = T)) +
-  theme(legend.key.size = unit(.5, "cm"),
-        legend.title = element_text(size = 8),
-        legend.text = element_text(size = 8), 
-        title = element_text(size = 8),
-        plot.margin = margin(0,0,0,120),
-        axis.text.x = element_text(size = 8, angle = 30, hjust = 1, vjust = 1)
-  ) +
-  guides(size = F) +
-  xlab("GOBP Term")
-dot
-
-ggsave(filename = "results/figs/rwhn_model_dotplot.tiff",
-       plot = dot + theme(legend.position = "none"),
-       width = 182,
-       height = 79,
-       units = "mm")
-ggsave(filename = "results/figs/rwhn_model_dotplot_lgd.tiff",
-       plot = dot + theme(legend.direction = "horizontal"))
 
 ######################
 # Standard GO analysis
 ######################
 
-enrichedTerms <- lapply(1:max(pp$clustering), function(i){
-  ids <- names(pp$clustering[pp$clustering == i ] )
-  cl_prots <- unique(gsub("_.*", "", ids))
-  
-  enriched <- enrichr(cl_prots, databases = "GO_Biological_Process_2018") %>% 
-    .[[1]] %>%
-    filter(Adjusted.P.value <= 0.05)  %>% 
-    mutate(cluster = i)
-  return(enriched)
-}) %>% 
-  do.call(rbind, .) %>% 
-  separate(Term,
-           into = c("Term", "GOID"),
-           sep = " \\(",
-           extra = "drop") %>%
-  mutate(GOID = sub("\\)",
-                    "",
-                    GOID))
-
-simpleGO <- simplifyGOReqData()
+enrichedTerms <- overrepresentationAnalysis(clustering = pp$clustering,
+                                            colours = c("#effff6","#168d49")) 
 
 
-enrichedTerms_flt <- lapply(1:max(pp$clustering), function(i){
-  df <- enrichedTerms[enrichedTerms$cluster == i,]
-  
-  keepID <- simplifyGO(GOID = df$GOID, simplifyData = simpleGO)
-  
-  df_flt <- df %>% 
-    filter(GOID %in% keepID) %>% 
-    #mutate(logp = -log10(Adjusted.P.value)) %>% 
-    #arrange(desc(logp)) %>% 
-    #top_n(10, logp)
-    arrange(desc(Adjusted.P.value)) %>% 
-    slice_min(Adjusted.P.value, n = 10) %>% 
-    mutate(rwhn = apply(., 1, function(x) {
-      if(x["Term"] %in% dot[[2]]$name){
-        ifelse(i %in% dot[[2]][dot[[2]]$name == x["Term"],]$seed, T, NA)
-      }else{
-        NA
-      }
-    }
-    )
-    )
-  if(nrow(df_flt) > 0){
-    df_flt <- mutate(df_flt, rank = 1:n())
-  }
-}) %>% 
-  do.call(rbind, .) %>% 
-  mutate(V1 = signif(Adjusted.P.value, digits = 2),
-         name = factor(Term, unique(Term))) %>% 
-  ggplot(aes(y = name, x = as.factor(cluster))) +
-  geom_tile(aes(fill = as.factor(cluster))) +
-  theme_bw() +
-  geom_point(aes(shape = rwhn)) +
-  theme(legend.key.size = unit(.5, "cm"),
-        legend.title = element_text(size = 8),
-        legend.text = element_text(size = 8), 
-        title = element_text(size = 8),
-        axis.text.y = element_text(size = 4.5),
-        legend.position = "none", 
-        panel.background = element_rect(fill = "black"), 
-        panel.grid = element_blank()
-        
-  ) +
-  scale_x_discrete(position = "top") +
-  ylab("GOBP Term") +
-  xlab("") +
-  ggtitle("Model GO analysis")
 
 ggsave(filename = "results/figs/standardORA_model.tiff",
-       plot = enrichedTerms_flt,
-              width = 70,
+       plot = enrichedTerms,
+              width = 80,
               height = 80,
               units = "mm")
+#####################
+
+ggsave("results/figs/model_RWHN_ORA.tiff",
+  sighm + enrichedTerms +
+    plot_layout(widths = c(2, 1)),
+  width = 180,
+  height = 80,
+  units = "mm", 
+  dpi = "print" 
+)
+####
+# comparison of how "specific" the GO terms from
+# RWHN or ORA are
+####
+
+
+sigTerms <- sighm$data[,c("name", "rank", "seed")]
+
+sigTerms$GOID <- AnnotationDbi::select(GO.db,
+                                       sigTerms$name, 
+                                       c("GOID", "TERM"),
+                                       "TERM")$GOID
+spec <-  GOspecific_vis(ORA_terms = enrichedTerms$data, RWHN_terms = sigTerms)
+
+lapply(1:length(spec), function(i){
+  ggsave(paste0("results/figs/controls/Model_termSpecificity_", i, ".tiff"), spec[[i]])
+})
 

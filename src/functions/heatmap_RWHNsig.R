@@ -10,9 +10,9 @@ rwhn_flt <-  lapply(1:length(rwhn_output), function(i){
         color = ifelse(rank_dif == 0, T, NA),
         V1 = signif(V1, digits = 2)) %>% 
   arrange(desc(V1)) %>% 
-  ungroup() %>%
   #filter(rank_dif > (0.05 / max(rank_dif))) %>% 
   filter(rank_dif > 1) %>%                    # Filter terms that appear in the same position in all conditions
+  ungroup() %>% 
   group_split(seed) %>% 
   lapply(., function(i){
     if(nrow(i > 0)){
@@ -28,7 +28,7 @@ rwhn_flt <-  lapply(1:length(rwhn_output), function(i){
           }
         }
       }
-     #df$rank <- 1:nrow(df) 
+     df$rank <- 1:nrow(df) 
     }else{
       df <- data.frame()
     }
@@ -39,11 +39,11 @@ rwhn_flt <-  lapply(1:length(rwhn_output), function(i){
   filter(!grepl("0\\.", name))
 
 sighm <- ggplot(rwhn_flt, aes(x = as.factor(seed), y = name)) +
-  geom_tile(aes(fill = V1), colour = "white") +
-  scale_fill_gradient(breaks = seq(0, 0.006,0.001), limits = c(0, 0.006),
+  geom_tile(aes(fill = rank), colour = "white") +
+  scale_fill_gradient(breaks = seq(5, max(rwhn_flt$rank),5),
                       low = colours[1], high = colours[2]) +
   guides(color = FALSE,
-         fill = guide_colourbar(title="Probability", reverse = T)) +
+         fill = guide_colourbar(title="Rank", reverse = T)) +
   xlab("Seed nodes") +
   ylab(ylab) +
   theme(legend.key.size = unit(.25, "cm"),

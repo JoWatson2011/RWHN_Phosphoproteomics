@@ -148,7 +148,7 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
       filter(func1 %in% enrichedTerms$Term&
                func2 %in% enrichedTerms$Term) %>% 
       filter(sim < 1 & sim > 0.7) %>% 
-      dplyr::select(func1 = 1, func2 = 2)
+      dplyr::select(func1, func2)
   }
   
   

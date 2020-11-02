@@ -1,5 +1,4 @@
 # From CRAN
-library(parallel)
 library(dplyr)
 library(tidyr)
 library(igraph)
@@ -11,7 +10,6 @@ library(GOSemSim)
 library(AnnotationDbi)
 library(GO.db)
 # From src/
-source("src/functions/GOspecificity.R")
 source("src/functions/overrepresentationAnalysis.R")
 source("src/functions/heatmap_RWHNsig.R")
 source("src/functions/imputePhosphoData.R")
@@ -139,16 +137,12 @@ elbow <- ggplot(wss, aes(x = cl, y = wss, color = type)) +
 set.seed(1)
 res_lap_cl <- kmeans(res_lap[, 2], 4)$cluster
 names(res_lap_cl) <- res_lap$id
-# readr::write_csv(data.frame(name = names(res_lap_cl),
-#                             cl = res_lap_cl),
-#                  "results/data/csf_res_cl_2.csv")
+
 
 set.seed(1)
 tot_lap_cl <- kmeans(tot_lap[, 4:5], 5)$cluster
 names(tot_lap_cl) <- tot_lap$id
-# readr::write_csv(data.frame(name = names(tot_lap_cl),
-#                             cl = tot_lap_cl),
-#                  "results/data/csf_tot_cl_2.csv")
+
 
 
 ggResCl <- lapply(1:max(res_lap_cl), function(i){
@@ -158,7 +152,8 @@ ggResCl <- lapply(1:max(res_lap_cl), function(i){
     dplyr::select(grep("HL_", colnames(.))) %>% 
     pivot_longer(cols = everything()) %>% 
     summarise(mean = mean(value, na.rm = T),
-              sd = sd(value, na.rm = T)) %>% 
+              sd = sd(value, na.rm = T),
+              .groups = "keep") %>% 
     mutate(cl = i,
            exp = "res")
 }) %>% do.call(rbind, .) %>% 
@@ -184,7 +179,8 @@ ggTotCl <- lapply(1:max(tot_lap_cl), function(i){
     mutate(name = gsub("_R[1234]", "", name)) %>% 
     group_by(name) %>% 
     summarise(mean = mean(value, na.rm = T),
-              sd = sd(value, na.rm =T)) %>% 
+              sd = sd(value, na.rm =T),
+              .groups = "keep") %>% 
     mutate(namecl = paste0(i, "_", name),
            cl = i)
 }) %>% do.call(rbind, .) %>% 
@@ -207,7 +203,7 @@ ggTotCl <- lapply(1:max(tot_lap_cl), function(i){
 gg_cl <- elbow + (ggTotCl / ggResCl) + 
   plot_layout(widths = c(1,2)) +
   plot_annotation(tag_levels = 'A')
-ggsave("results/figs/Ruprecht_Clusters.tiff", gg_cl, width = 18.2, height = 10, units = "cm")
+ggsave("results/figs/Ruprecht_Clusters.tiff", gg_cl, width = 18.2, height = 10, units = "cm", dpi = "print")
 
 # Construct heterogeneous network
 res_mlnw <- constructHetNet(stytxt = ruprecht_sty,
@@ -215,6 +211,7 @@ res_mlnw <- constructHetNet(stytxt = ruprecht_sty,
                             clustering =  res_lap_cl,
                             modules = T,
                             enrichrLib =  "KEGG_2019_Human",
+                            stringPath = "data/STRINGexpmtgene_highconf.rds",
                             pval = 0.05)
 
 tot_mlnw <- constructHetNet(stytxt = ruprecht_sty,
@@ -222,6 +219,7 @@ tot_mlnw <- constructHetNet(stytxt = ruprecht_sty,
                             clustering =  tot_lap_cl,
                             modules = T,
                             enrichrLib =  "KEGG_2019_Human",
+                            stringPath = "data/STRINGexpmtgene_highconf.rds",
                             pval = 0.05)
 
 ## Run RWHN algorithm
@@ -236,16 +234,6 @@ seed_tot <- lapply(1:max(tot_lap_cl), function(i){
 })
 
 
-# Calculate the number of cores
-no_cores <- detectCores() - 1
-
-# Initiate cluster
-cl <- makeCluster(no_cores)
-
-#Import objects into cluster
-
-
-
 paste("start res", Sys.time())
 rwhn_res <- lapply(seed_res, function(s){
   calculateRWHN(edgelists = res_mlnw$edgelists,
@@ -255,7 +243,7 @@ rwhn_res <- lapply(seed_res, function(s){
                 restart = 0.7,
                 weight_xy = 0.3,
                 weight_yz = 0.7,
-                eps = 1/10^12) %>%
+                ) %>%
     filter(name %in% res_mlnw$v[res_mlnw$v$layer=="func",]$v)
 })
 
@@ -267,8 +255,7 @@ rwhn_tot <- lapply(seed_tot, function(s){
                 transitionProb = 0.7,
                 restart = 0.7,
                 weight_xy = 0.3,
-                weight_yz = 0.7,
-                eps = 1/10^12) %>%
+                weight_yz = 0.7) %>%
     filter(name %in% tot_mlnw$v[tot_mlnw$v$layer=="func",]$v)
 })
 
@@ -277,6 +264,10 @@ end <- Sys.time()
 saveRDS(rwhn_res, "results/data/rwhn_ruprecht_res.rds")
 saveRDS(rwhn_tot, "results/data/rwhn_ruprecht_tot.rds")
 
+
+#########
+# Visualisation, etc. 
+#########
 rwhn_res <- readRDS("results/data/rwhn_ruprecht_res.rds")
 rwhn_tot <- readRDS("results/data/rwhn_ruprecht_tot.rds")
 
@@ -298,27 +289,18 @@ rwhn_tot_df <- lapply(1:length(rwhn_tot), function(i)
 ) %>% 
   do.call(cbind, .) 
 readr::write_csv(rwhn_tot_df, "results/data/Ruprecht_tot_rwhn_results.csv")
-## res Filter top 5%
 
-sighm_res <- heatmap_RWHN(rwhn_res, ylab = "KEGG Pathway", colours= c(low = "#fbffc8", high = "#1e5c00"))
 
-# ggsave(filename = "results/figs/rwhn_sig_Ruprecht_res.tiff",
-#        plot = sighm_res,
-#        width = 182,
-#        height = 79,
-#        units = "mm")  
+# Visualise Results
+sighm_res <- heatmap_RWHN(rwhn_output = rwhn_res,
+                          ylab = "KEGG Pathway", 
+                          colours = c("#8fc0d1","#209dc9"))
+
 
 ## tot Filter top 5%
 sighm_tot <- heatmap_RWHN(rwhn_tot,
                           ylab = "KEGG Pathway",
-                          colours= c(low = "#fbffc8",
-                                     high = "#1e5c00"))
-# 
-# ggsave(filename = "results/figs/rwhn_sig_Ruprecht_tot.tiff",
-#        plot = sighm_tot,
-#        width = 182,
-#        height = 79,
-#        units = "mm")  
+                          colours = c("#8fc0d1","#209dc9"))
 
 
 ######################
@@ -332,31 +314,20 @@ enrichedTerms_res <- overrepresentationAnalysis(clustering = res_lap_cl,
                                                 colours = c("#effff6","#168d49"),
                                                 database = "KEGG_2019_Human")
 
-# ggsave(filename = "results/figs/standardORA_Ruprecht_Res.tiff",
-#        plot = enrichedTerms_flt_res,
-#        width = 55,
-#        height = 80,
-#        units = "mm")
 
 ## Total
 enrichedTerms_tot <- overrepresentationAnalysis(tot_lap_cl, 
                                                 RWHN_sig = sighm_tot,
                                                 ylab = "KEGG Pathway",
-                                                colours = c("#effff6","#168d49"),
+                                                colours = c("#d5d2e2","#168d49"),
                                                 database = "KEGG_2019_Human")
 
-# ggsave(filename = "results/figs/standardORA_Ruprecht_Tot.tiff",
-#        plot = enrichedTerms_flt_tot,
-#        width = 55,
-#        height = 80,
-#        units = "mm")
-
-ggsave("results/figs/ruprecht_RWHN_ORA.tiff", 
-       sighm_res + enrichedTerms_res +
-         sighm_tot + enrichedTerms_tot +
+ggsave("results/figs/ruprecht_RWHN_ORA.pdf", 
+       sighm_tot + sighm_res +
+         enrichedTerms_tot + enrichedTerms_res + 
          plot_layout(ncol = 2, 
-                     widths= c(2, 1),
-                     heights = c(1,1.5)),
+                     #widths= c(2, 1),
+                     heights = c(1,2)),
        width = 180,
        height = 150,
        units = "mm",

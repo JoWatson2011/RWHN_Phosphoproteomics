@@ -16,7 +16,6 @@ source("src/functions/simplifyGO.R")
 source("src/functions/simplifyGOReqData.R")
 source("src/functions/constructHetNet.R")
 source("src/functions/calculateRWHN.R")
-source("src/functions/dotplot_gg.R")
 
 # Import multilayer heterogenous network for model data
 mlnw_model <- readRDS("results/data/mlnw_model.rds")
@@ -69,7 +68,7 @@ rwhn_gg <- lapply(1:length(rwhn), function(x){
 })
 
 gg <- lapply(1:length(rwhn_gg), function(x) rbind(rwhn_gg[[x]], rwhn_random_gg[[x]]) %>% 
-               mutate(name = factor(x = name, levels = rwhn_gg[[x]]$name, order = T))) 
+               mutate(name = factor(x = name, levels = rwhn_gg[[x]]$name, order = T)))
 
 # Visualise with ggplot
 gs <- lapply(gg, function(i){
@@ -86,7 +85,7 @@ gs <- lapply(gg, function(i){
                size = 0.3) +
     scale_color_gradient(name = "True Rank", low = "red4", high = "white") +
     scale_x_continuous(name = "RWHN rank",
-                       breaks = seq(from = 20, to = max(i$rank), by = 30),
+                       breaks = seq(from = 50, to = max(i$rank), by = 50),
                        expand = c(0,0)) +
     scale_y_discrete(name = "GO Term") +
     scale_fill_gradient(name = "KDE of random\nnetworks",
@@ -94,18 +93,44 @@ gs <- lapply(gg, function(i){
                         low = "slategray1", high = "steelblue4",
                         na.value = "white"
     ) +
-    theme(axis.text.y = element_blank(),
-          legend.position = "bottom",
-          legend.text = element_text(angle = 45, hjust = 1),
-          axis.ticks.y = element_blank(),
-          axis.line = element_line(colour = "black")
+    theme(axis.title = element_text(size = 5),
+         # legend.text = element_text(size = 5),
+         # legend.title= element_text(size = 5),
+         axis.text.x = element_text(size = 5),
+         axis.text.y = element_blank(),
+         axis.ticks.y = element_blank(),
+         axis.line = element_line(colour = "black"),
+         # legend.key.height = unit(2, "cm")
     ) +
     ggtitle(i$seed)
 })
 
 
 #Export
-lapply(1:length(gs), function(x) ggsave(filename = paste0("results/figs/controls/model_random_nw_cl", x , ".tiff"), plot = gs[[x]]+ guides(color = F, fill = F),
-                                        width = 50, height = 50, units = "mm")
+
+library(patchwork)
+layout <- "
+AABBCC
+AABBCC
+#DDEE#
+#DDEE#
+"
+
+ggsave("results/figs/controls/model_random_nw_patchwork.tiff",
+  gs[[1]] + 
+    gs[[2]] + 
+    gs[[3]] +
+    gs[[4]] +
+    gs[[5]] +
+    plot_layout(nrow = 2, guides = "collect"),
+  width = 115,
+  height = 65,
+  units = "mm",
+  dpi = "print"
 )
-ggsave("results/figs/controls/model_random_nw_cl_legend.tiff", plot = gs[[1]])
+
+
+ggsave("results/figs/controls/model_random_nw_cl_legend.tiff", plot = gs[[1]], dpi = "print")
+
+
+

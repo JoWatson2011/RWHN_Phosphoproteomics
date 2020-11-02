@@ -5,6 +5,7 @@ calculateRWHN <- function(edgelists, verti, seeds, transitionProb,
                           restart, weight_xy, weight_yz, eps = 1/10^6,
                           random = F){
   
+  
   inter_el <- lapply(edgelists[c("x", "y", "z")], function(i){
     nw <- i %>% 
       graph_from_data_frame(directed = F) %>% simplify
@@ -126,7 +127,7 @@ calculateTransitionMatrix <- function(trans, hetNet, vert){
     notHet <- inter[rownames(inter) %in% notHetNames, colnames(inter) %in% notHetNames]
     
     # eq2 when (B)i,j = 0
-    if(class(notHet) %in% c("data.frame", "matrix")){
+    if(class(notHet)[1] %in% c("data.frame", "matrix")){
       notHet_tp <- (notHet)/rowSums(notHet)
     }else{
       notHet_tp <- data.frame()
@@ -137,7 +138,7 @@ calculateTransitionMatrix <- function(trans, hetNet, vert){
     het <- inter[rownames(inter) %in% hetNames, colnames(inter) %in% hetNames]
     
     # eq2 when (B)i,j > 0
-    if(class(het) %in% c("data.frame", "matrix")){
+    if(class(het)[1] %in% c("data.frame", "matrix")){
       het_tp <- ((1-trans)*het)/rowSums(het)
     }else if(length(hetNames) != 0){
       het_tp <- data.frame()

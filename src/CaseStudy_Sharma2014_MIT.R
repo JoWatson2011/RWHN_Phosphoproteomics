@@ -33,7 +33,7 @@ sharma_sty <- data.table::fread(input = "data/Sharmaetal_2014.csv"#,
     id = paste0(`Gene names`, "_", `Amino acid`, `Position`)) %>% 
   filter(!duplicated(id))
 
-colnames(sharma_sty)[grep("Intensity.*[CEN]", 
+colnames(sharma_sty)[grep("Intensity.*[CN]", 
                           colnames(sharma_sty))] <- gsub("Intensity ", "",
                                                          gsub("pY_", "",
                                                               gsub("[15]+_", "",
@@ -102,12 +102,14 @@ gg_cl <- norm_med %>%
   )
 
 
-mlnw <- constructHetNet(phosphoData = dplyr::select(norm_med, -cl),
-                        clustering =  cl,
-                        modules = T,
-                        enrichrLib =  "GO_Biological_Process_2018",
-                        stringPath = "data/STRINGexpmtgene_highconf.rds",
-                        pval = 0.05)
+# mlnw <- constructHetNet(phosphoData = dplyr::select(norm_med, -cl),
+#                         clustering =  cl,
+#                         modules = T,
+#                         enrichrLib =  "GO_Biological_Process_2018",
+#                         stringPath = "data/STRINGexpmtgene_highconf.rds",
+#                         pval = 0.05)
+
+saverds("results/data/m")
 
 
 seed <- lapply(1:max(cl), function(i){

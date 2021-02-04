@@ -109,7 +109,7 @@ gg_cl <- norm_med %>%
 #                         stringPath = "data/STRINGexpmtgene_highconf.rds",
 #                         pval = 0.05)
 
-saverds("results/data/m")
+saveRDS(mlnw, "results/data/mlnw_Sharma_MIT.rds")
 
 
 seed <- lapply(1:max(cl), function(i){

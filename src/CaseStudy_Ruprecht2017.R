@@ -206,16 +206,14 @@ gg_cl <- elbow + (ggTotCl / ggResCl) +
 ggsave("results/figs/Ruprecht_Clusters.tiff", gg_cl, width = 18.2, height = 10, units = "cm", dpi = "print")
 
 # Construct heterogeneous network
-res_mlnw <- constructHetNet(stytxt = ruprecht_sty,
-                            phosphoData = res_lap,
+res_mlnw <- constructHetNet(phosphoData = res_lap,
                             clustering =  res_lap_cl,
                             modules = T,
                             enrichrLib =  "KEGG_2019_Human",
                             stringPath = "data/STRINGexpmtgene_highconf.rds",
                             pval = 0.05)
 
-tot_mlnw <- constructHetNet(stytxt = ruprecht_sty,
-                            phosphoData =  tot_lap[,-c(2:3)],
+tot_mlnw <- constructHetNet(phosphoData =  tot_lap[,-c(2:3)],
                             clustering =  tot_lap_cl,
                             modules = T,
                             enrichrLib =  "KEGG_2019_Human",

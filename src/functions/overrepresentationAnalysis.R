@@ -5,7 +5,7 @@ overrepresentationAnalysis <- function(clustering,
                                        database = "GO_Biological_Process_2018"){
 
   
-  enrichedTerms <- lapply(1:max(clustering), function(i){
+  enrichedTerms <- lapply(unique(clustering)[order(unique(clustering))], function(i){
     ids <- names(clustering[clustering == i ] )
     cl_prots <- unique(gsub("_.*", "", ids))
     cl_prots <- cl_prots[cl_prots != ""]
@@ -28,7 +28,7 @@ overrepresentationAnalysis <- function(clustering,
       mutate(GOID = sub("\\)",
                         "",
                         GOID))
-    enrichedTerms_flt <- lapply(1:max(clustering), function(i){
+    enrichedTerms_flt <- lapply(unique(clustering)[order(unique(clustering))], function(i){
       df <- enrichedTerms[enrichedTerms$cluster == i,]
       
       keepID <- simplifyGO(GOID = df$GOID, simplifyData = simpleGO)
@@ -53,7 +53,7 @@ overrepresentationAnalysis <- function(clustering,
       enrichedTerms_flt <- unique(dplyr::select(enrichedTerms_flt, -seed))
       }
   } else {
-    enrichedTerms_flt <- lapply(1:max(clustering), function(i){
+    enrichedTerms_flt <- lapply(unique(clustering)[order(unique(clustering))], function(i){
       df <- enrichedTerms[enrichedTerms$cluster ==i, c("Term", "Adjusted.P.value", "cluster")] %>% 
         arrange(desc(Adjusted.P.value))
       

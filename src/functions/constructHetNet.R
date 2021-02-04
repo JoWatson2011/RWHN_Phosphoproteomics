@@ -1,25 +1,30 @@
-constructHetNet <- function(stytxt, phosphoData, clustering,
+constructHetNet <- function(phosphoData = NULL, clustering,
                             stringPath = "data/STRINGexpmtgene_lowconf.rds",
                             enrichrLib = "GO_Biological_Process_2018",
-                            modules = T, pval = 0.05){
+                            modules = T, pval = 0.05, simplify = T){
   ## Phospho
-  phos <- lapply(1:max(clustering), function(x){
+  phos <- lapply(unique(clustering)[order(unique(clustering))], function(x){
     cl <- names(clustering[clustering == x])
-    xpnd <- phosphoData %>% 
-      filter(id %in% cl) %>% 
-      tibble::column_to_rownames(var = "id") %>% 
-      t() %>% 
-      cor() %>% 
-      as.data.frame() %>% 
-      tibble::rownames_to_column(var = "phos1") %>% 
-      gather("phos2", "value", -phos1)
     
-    if(anyNA(xpnd)){
-      xpnd <- dplyr::select(xpnd, -value)
-    } else {
-      xpnd <- xpnd %>% 
-        filter(value < as.double(1.0), value > 0.99) %>% 
-        unique()
+    if(is.null(phosphoData)){
+      xpnd <- expand.grid(cl, cl)
+    }else{
+      xpnd <- phosphoData %>% 
+        filter(id %in% cl) %>% 
+        tibble::column_to_rownames(var = "id") %>% 
+        t() %>% 
+        cor() %>% 
+        as.data.frame() %>% 
+        tibble::rownames_to_column(var = "phos1") %>% 
+        gather("phos2", "value", -phos1)
+      
+      if(anyNA(xpnd)){
+        xpnd <- dplyr::select(xpnd, -value)
+      } else {
+        xpnd <- xpnd %>% 
+          filter(value < as.double(1.0), value > 0.99) %>% 
+          unique()
+      }
     }
     return(xpnd) 
   }) %>% 
@@ -48,9 +53,9 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
   
   ## Protein >> Func
   
-  enrichedTerms <- lapply(1:max(clustering), function(i){
+  enrichedTerms <- lapply(unique(clustering)[order(unique(clustering))], function(i){
     ids <- names(clustering[clustering == i ] )
-    cl_prots <- unique(stytxt[stytxt$id %in% ids,]$gene.symbol)
+    cl_prots <- gsub("_.*", "", ids)
 
     enrichedTerms <- if(modules){
       el <- STRING.expmt.gene %>% 
@@ -81,7 +86,7 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
     }
   }) %>% do.call(rbind, .)
   
-  if(grepl("GO", enrichrLib)){
+  if(grepl("GO", enrichrLib) & !is.null(enrichedTerms)){
     enrichedTerms <- enrichedTerms %>%
       separate(Term,
                into = c("Term", "GOID"),
@@ -90,8 +95,11 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
       mutate(GOID = sub("\\)",
                         "",
                         GOID))
-    
-    keepID <- simplifyGO(GOID = enrichedTerms$GOID, simplifyData = simplifyGOReqData())
+    if(simplify == T){
+      keepID <- simplifyGO(GOID = enrichedTerms$GOID, simplifyData = simplifyGOReqData())
+    }else{
+      keepID <- enrichedTerms$GOID
+    }
     
     prot_func <- enrichedTerms %>% 
       filter(GOID %in% keepID) %>% 
@@ -160,10 +168,23 @@ constructHetNet <- function(stytxt, phosphoData, clustering,
     data.frame(v = unique(phos_prot$prot), layer = "prot", stringsAsFactors = F),
     data.frame(v = unique(prot$prot1), layer = "prot", stringsAsFactors = F),
     data.frame(v = unique(prot$prot2), layer = "prot", stringsAsFactors = F),
-    data.frame(v = unique(prot_func$func), layer = "func", stringsAsFactors = F),
-    data.frame(v = unique(func$func1), layer = "func",  stringsAsFactors = F),
-    data.frame(v = unique(func$func2), layer = "func",  stringsAsFactors = F)
-  ) %>% 
+    data.frame(v = unique(prot_func$func), layer = "func", stringsAsFactors = F)
+  )
+  
+  if(length(unique(func$func1)) != 0){
+    v <- rbind(
+      v,
+      data.frame(v = unique(func$func1), layer = "func",  stringsAsFactors = F)
+      )
+  }
+  if(length(unique(func$func2)) != 0){
+    v <- rbind(
+      v,
+      data.frame(v = unique(func$func2), layer = "func",  stringsAsFactors = F)
+    )
+  }
+  
+  v <- v %>% 
     na.omit() %>% 
     unique()
   

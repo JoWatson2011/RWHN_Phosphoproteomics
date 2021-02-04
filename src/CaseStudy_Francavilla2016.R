@@ -12,7 +12,6 @@ library(GOSemSim)
 library(AnnotationDbi)
 library(GO.db)
 # From src/
-source("src/functions/GOspecificity.R")
 source("src/functions/overrepresentationAnalysis.R")
 source("src/functions/heatmap_RWHNsig.R")
 source("src/functions/imputePhosphoData.R")
@@ -30,7 +29,7 @@ cfr_sty <- data.table::fread(input = "data/CFR_STY_2016.csv",
 ) %>% 
   mutate(id = paste0(`Gene names`, "_", `Swiss-Prot phosphosite`)) %>% 
   filter(!duplicated(id)) %>% 
-  rename(`Gene names` = "gene.symbol")
+  rename("Gene names" = "gene.symbol")
 colnames(cfr_sty) <- gsub(" ", "_", colnames(cfr_sty))
 
 
@@ -64,6 +63,7 @@ tgf <- cfr_sty %>%
 egf_fcm <- fuzzyC(egf, 6)
 tgf_fcm <- fuzzyC(tgf, 6)
 
+
 data <- rbind(tgf_fcm$g$data, egf_fcm$g$data) %>% 
   mutate(stim = c(rep("TGF-a", nrow(tgf_fcm$g$data)),
                   rep("EGF", nrow(egf_fcm$g$data)))
@@ -83,8 +83,12 @@ ggsave("results/figs/francavilla_clusters.tiff", ggcl,
        width = 8.3, height = 3.7, units = "in", dpi = 300)
 
 # Construct heterogeneous network
-egf_mlnw <- constructHetNet(cfr_sty, egf, egf_fcm$clustering)
-tgf_mlnw <- constructHetNet(cfr_sty, tgf, tgf_fcm$clustering)
+egf_mlnw <- constructHetNet(egf, egf_fcm$clustering)
+tgf_mlnw <- constructHetNet(tgf, tgf_fcm$clustering)
+
+
+saveRDS(egf_mlnw, "results/data/egf_mlnw.rds")
+saveRDS(tgf_mlnw, "results/data/tgf_mlnw.rds")
 
 ## Run RWHN algorithm
 # Recommend to run overnight or on HPC
@@ -209,32 +213,161 @@ ggsave("results/figs/Francavilla_RWHN_ORA.pdf",
 )
        
 ####
-# comparison of how "specific" the GO terms from
-# RWHN or ORA are
+# F-SCORE
 ####
 
-# EGF
-sigTerms_egf <- sighm_egf$data[,c("name", "rank", "seed")]
-
-sigTerms_egf$GOID <- AnnotationDbi::select(GO.db,
-                                           sigTerms_egf$name, 
-                                           c("GOID", "TERM"),
-                                           "TERM")$GOID
-spec_egf <- GOspecific_vis(ORA_terms = enrichedTerms_egf$data, RWHN_terms = na.omit(sigTerms_egf))  
-
-lapply(1:length(spec_egf), function(i){
-  ggsave(paste0("results/figs/controls/Francavilla_EGF_termSpecificity_", i, ".tiff"), spec_egf[[i]])
+#RWHN
+rwhn_f1 <- lapply(list(
+  egf = list(cl = egf_fcm$clustering,
+             rwhn_output = sighm_egf$data),
+  tgf = list(cl = tgf_fcm$clustering,
+             rwhn_output = sighm_tgf$data)
+), function(i){
+  true_mapped <- readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>% 
+    arrange(ON_PROCESS) 
+  
+  true <- readr::read_tsv("data/Regulatory_sites.txt", skip = 2) %>% 
+    mutate(id_site = paste0(PROTEIN, "_", gsub("-.*", "", MOD_RSD))) %>% 
+    filter(ORGANISM == "human" &
+             grepl("-p", MOD_RSD),
+           !is.na(ON_PROCESS)) %>% 
+    separate_rows(ON_PROCESS, sep ="; ") %>% 
+    dplyr::select(id_site, ON_PROCESS) %>% 
+    distinct() %>% 
+    merge(data.frame(id_site = names(i$cl), cl = i$cl), by = "id_site") %>% 
+    merge(true_mapped[,c("ON_PROCESS", "GOID", "offspring")], by = "ON_PROCESS")
+  
+  true_list <- true %>% 
+    group_by(cl) %>% 
+    group_split() %>% 
+    lapply(function(i){
+      x <- i %>% 
+        separate_rows(offspring, sep = ";")
+      unique(c(x$GOID, x$offspring))
+    })
+  
+  library(GO.db)
+  
+  
+  pred <- i$rwhn_output %>% 
+    arrange(seed)
+  
+  pred$GOID <- (AnnotationDbi::select(GO.db,
+                                      pred$name,
+                                      "GOID",
+                                      keytype = "TERM"))$GOID
+  
+  pred_list <- pred %>% 
+    group_by(seed) %>% 
+    group_split() %>% 
+    lapply(function(x){ 
+      ID <- x$GOID
+      
+      offspring <- do.call(c, as.list(GOBPOFFSPRING)[ID])
+      
+      return(c(ID, offspring))
+    })
+  sapply(1:length(pred_list), function(k){ 
+    sapply(1:length(true_list), function(x){
+      tp <- sum(pred_list[[k]] %in% true_list[[x]])
+      fn <- sum(!true_list[[k]] %in% pred_list[[x]]) 
+      fp <- sum(!pred_list[[k]] %in% true_list[[x]])
+      
+      # recall <- TruePositives / (TruePositives + FalseNegatives)
+      recall <- tp / (tp + fn)
+      # precision <- TruePositives / (TruePositives + FalsePositives)
+      precision <- tp / (tp + fp)
+      # F-Measure = (2 * Precision * Recall) / (Precision + Recall)
+      F1 <- (2 * precision * recall) / (precision + recall)
+      
+      return(F1)
+    })
+  }) %>% 
+    as.data.frame() %>%
+    tibble::rownames_to_column("Predicted") %>%
+    pivot_longer(cols = -Predicted,
+                 names_to = "True",
+                 values_to = "F1") %>%
+    ggplot(aes(x = Predicted, y = True, fill = F1)) +
+    geom_tile() +
+    scale_fill_viridis_c(limits = c(0, 1)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
 })
 
-# TGFa
-sigTerms_tgf <- sighm_tgf$data[,c("name", "rank", "seed")]
-
-sigTerms_tgf$GOID <- AnnotationDbi::select(GO.db,
-                                           sigTerms_tgf$name, 
-                                           c("GOID", "TERM"),
-                                           "TERM")$GOID
-spec_tgf <- GOspecific_vis(ORA_terms = enrichedTerms_tgf$data, RWHN_terms = na.omit(sigTerms_tgf))
-
-lapply(1:length(spec_tgf), function(i){
-  ggsave(paste0("results/figs/controls/Francavilla_TGF_termSpecificity_", i, ".tiff"), spec_tgf[[i]])
+###ORA
+ora_f1 <- lapply(list(
+  egf = list(cl = egf_fcm$clustering,
+             ora_output = enrichedTerms_egf$data),
+  tgf = list(cl = tgf_fcm$clustering,
+             ora_output = enrichedTerms_tgf$data)
+), function(i){
+  
+  true_mapped <- readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>% 
+    arrange(ON_PROCESS) 
+  
+  true <- readr::read_tsv("data/Regulatory_sites.txt", skip = 2) %>% 
+    mutate(id_site = paste0(PROTEIN, "_", gsub("-.*", "", MOD_RSD))) %>% 
+    filter(ORGANISM == "human" &
+             grepl("-p", MOD_RSD),
+           !is.na(ON_PROCESS)) %>% 
+    separate_rows(ON_PROCESS, sep ="; ") %>% 
+    dplyr::select(id_site, ON_PROCESS) %>% 
+    distinct() %>% 
+    merge(data.frame(id_site = names(i$cl), cl = i$cl), by = "id_site") %>% 
+    merge(true_mapped[,c("ON_PROCESS", "GOID", "offspring")], by = "ON_PROCESS")
+  
+  true_list <- true %>% 
+    group_by(cl) %>% 
+    group_split() %>% 
+    lapply(function(i){
+      x <- i %>% 
+        separate_rows(offspring, sep = ";")
+      unique(c(x$GOID, x$offspring))
+    })
+  
+  library(GO.db)
+  pred <- i$ora_output %>% 
+    arrange(cluster)
+  
+  pred_list <- pred %>% 
+    group_by(cluster) %>% 
+    group_split() %>% 
+    lapply(function(x){ 
+      ID <- x$GOID
+      
+      offspring <- do.call(c, as.list(GOBPOFFSPRING)[ID])
+      
+      return(c(ID, offspring))
+    })
+  
+  names(pred_list) <- unique(pred$cluster)
+  
+  true_list <- true_list[unique(pred$cluster)]
+  names(true_list) <- unique(pred$cluster)
+  sapply(names(pred_list), function(k){ 
+    sapply(names(true_list), function(x){
+      tp <- sum(pred_list[[k]] %in% true_list[[x]])
+      fn <- sum(!true_list[[k]] %in% pred_list[[x]]) 
+      fp <- sum(!pred_list[[k]] %in% true_list[[x]])
+      
+      # recall <- TruePositives / (TruePositives + FalseNegatives)
+      recall <- tp / (tp + fn)
+      # precision <- TruePositives / (TruePositives + FalsePositives)
+      precision <- tp / (tp + fp)
+      # F-Measure = (2 * Precision * Recall) / (Precision + Recall)
+      F1 <- (2 * precision * recall) / (precision + recall)
+      
+      return(F1)
+    })
+  }) %>% 
+    as.data.frame() %>%
+    tibble::rownames_to_column("Predicted") %>%
+    pivot_longer(cols = -Predicted,
+                 names_to = "True",
+                 values_to = "F1") %>%
+    ggplot(aes(x = Predicted, y = True, fill = F1)) +
+    geom_tile() +
+    scale_fill_viridis_c(limits = c(0, 1)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
 })
+

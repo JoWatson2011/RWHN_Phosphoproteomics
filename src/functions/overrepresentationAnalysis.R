@@ -1,6 +1,7 @@
 overrepresentationAnalysis <- function(clustering, 
                                        colours,
                                        RWHN_sig = NULL,
+                                       simplify = T,
                                        ylab = "GOBP Term", 
                                        database = "GO_Biological_Process_2018"){
 
@@ -18,8 +19,7 @@ overrepresentationAnalysis <- function(clustering,
   }) %>% 
     do.call(rbind, .)
   
-  if(grepl("GO_Biological_Process", database)){
-    simpleGO <- simplifyGOReqData()
+  if(grepl("GO_", database)){
     enrichedTerms <-  enrichedTerms %>%
       separate(Term,
                into = c("Term", "GOID"),
@@ -28,6 +28,12 @@ overrepresentationAnalysis <- function(clustering,
       mutate(GOID = sub("\\)",
                         "",
                         GOID))
+  }
+  
+  
+  if(grepl("GO_Biological_Process", database) & simplify){
+    simpleGO <- simplifyGOReqData()
+    
     enrichedTerms_flt <- lapply(unique(clustering)[order(unique(clustering))], function(i){
       df <- enrichedTerms[enrichedTerms$cluster == i,]
       
@@ -44,15 +50,9 @@ overrepresentationAnalysis <- function(clustering,
       do.call(rbind, .) %>% 
       mutate(V1 = signif(Adjusted.P.value, digits = 2),
              name = factor(Term, unique(Term)))
-    
-    if(!is.null(RWHN_sig)){
-      enrichedTerms_flt$Term <- tolower(enrichedTerms_flt$Term)
-      enrichedTerms_flt <- merge(enrichedTerms_flt, RWHN_sig$data[,c("name", "seed")],
-                      by.x = "Term", by.y = "name", all.x = T)
-      enrichedTerms_flt$rwhn <- ifelse(enrichedTerms_flt$cluster == enrichedTerms_flt$seed, T, NA)
-      enrichedTerms_flt <- unique(dplyr::select(enrichedTerms_flt, -seed))
-      }
+
   } else {
+    
     enrichedTerms_flt <- lapply(unique(clustering)[order(unique(clustering))], function(i){
       df <- enrichedTerms[enrichedTerms$cluster ==i, c("Term", "Adjusted.P.value", "cluster")] %>% 
         arrange(desc(Adjusted.P.value))
@@ -64,17 +64,18 @@ overrepresentationAnalysis <- function(clustering,
       return(df)
     }) %>% 
       do.call(rbind, .) %>% 
-      mutate(name = factor(Term, unique(Term)))
+      mutate(V1 = signif(Adjusted.P.value, digits = 2),
+             name = factor(Term, unique(Term)))
     
-    if(!is.null(RWHN_sig)){
-      enrichedTerms_flt$Term <- tolower(enrichedTerms_flt$Term)
-      enrichedTerms_flt <- merge(enrichedTerms_flt, RWHN_sig$data[,c("name", "seed")],
-                                 by.x = "Term", by.y = "name", all.x = T)
-      enrichedTerms_flt$rwhn <- ifelse(enrichedTerms_flt$cluster == enrichedTerms_flt$seed, T, NA)
-      enrichedTerms_flt <- dplyr::select(enrichedTerms_flt, -seed) %>%  unique()
-    }
   }
   
+  if(!is.null(RWHN_sig)){
+    enrichedTerms_flt$Term <- tolower(enrichedTerms_flt$Term)
+    enrichedTerms_flt <- merge(enrichedTerms_flt,RWHN_sig$data[,c("name", "seed")],
+                               by.x = "Term", by.y = "name", all.x = T)
+    enrichedTerms_flt$rwhn <- ifelse(enrichedTerms_flt$cluster == enrichedTerms_flt$seed, T, NA)
+    enrichedTerms_flt <- dplyr::select(enrichedTerms_flt, -seed) %>%  unique()
+  }
   
   
   gg <- ggplot(enrichedTerms_flt, aes(y = name, x = as.factor(cluster))) +

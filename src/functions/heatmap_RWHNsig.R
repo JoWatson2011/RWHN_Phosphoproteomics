@@ -1,4 +1,4 @@
-heatmap_RWHN <- function(rwhn_output, ylab, colours = c(low = "#e6e4f8", high = "#46009e")){
+heatmap_RWHN <- function(rwhn_output, ylab, colours = c(low = "#e6e4f8", high = "#46009e"), removeCommon = T){
   if(class(rwhn_output)=="list"){
     if(is.null(names(rwhn_output))){
       loop <- 1:length(rwhn_output)
@@ -17,7 +17,7 @@ heatmap_RWHN <- function(rwhn_output, ylab, colours = c(low = "#e6e4f8", high = 
              V1 = signif(V1, digits = 2)) %>% 
       arrange(desc(V1)) %>% 
       #filter(rank_dif > (0.05 / max(rank_dif))) %>% 
-      filter(rank_dif > 1) %>%                    # Filter terms that appear in the same position in all conditions
+      {if(removeCommon) filter(., rank_dif > 1) else . } %>%                    # Filter terms that appear in the same position in all conditions
       ungroup() %>% 
       group_split(seed) %>% 
       sapply(., function(i){

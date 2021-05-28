@@ -44,6 +44,12 @@ STRING_flt <- function(path, conf){
   
   return(STRING.expmt.gene)
 }
+
+path <- "" #PATH TO LOCAL DOWNLOAD OF STRING FILE
+# Available from: https://string-db.org/cgi/download?sessionId=%24input-%3E%7BsessionId%7D&species_text=Homo+sapiens
+# Version used in original paper:
+# 9606.protein.links.detailed.v11.0.txt
+
   
 STRING_lowconf <- STRING_flt("data/9606.protein.links.detailed.v11.0.txt", 400)
 saveRDS(STRING_lowconf, "data/STRINGexpmtgene_lowconf.rds")

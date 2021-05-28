@@ -203,7 +203,7 @@ ggTotCl <- lapply(1:max(tot_lap_cl), function(i){
 gg_cl <- elbow + (ggTotCl / ggResCl) + 
   plot_layout(widths = c(1,2)) +
   plot_annotation(tag_levels = 'A')
-ggsave("results/figs/Ruprecht_Clusters.tiff", gg_cl, width = 18.2, height = 10, units = "cm", dpi = "print")
+#ggsave("results/figs/Ruprecht_Clusters.tiff", gg_cl, width = 18.2, height = 10, units = "cm", dpi = "print")
 
 # Construct heterogeneous network
 res_mlnw <- constructHetNet(phosphoData = res_lap,
@@ -330,4 +330,191 @@ ggsave("results/figs/ruprecht_RWHN_ORA.pdf",
        height = 150,
        units = "mm",
        dpi = "print"
+)
+
+
+
+paste("RWHN:",
+      length(unique(sighm_res$data$name)),
+      "ORA:",
+      length(unique(enrichedTerms_res$data$Term))
+)
+
+paste("RWHN:",
+      length(unique(sighm_tot$data$name)),
+      "ORA:",
+      length(unique(enrichedTerms_tot$data$Term))
+)
+
+lapply(1:max(res_lap_cl), function(i){
+  paste("RWHN:",
+        nrow(sighm_res$data[sighm_res$data$seed == i,]),
+        "ORA:",
+        nrow(enrichedTerms_res$data[enrichedTerms_res$data$cluster == i,])
+  )
+        })
+
+
+#########################
+# Final visualisation for paper
+#########################
+ora_res <- enrichedTerms_res$data %>% 
+  dplyr::select(term = Term, value = Adjusted.P.value, cluster) %>% 
+  mutate(method = "ORA")
+rwhn_res <- sighm_res$data %>% 
+  dplyr::select(term = name, value = rank, cluster = seed) %>% 
+  mutate(method = "RWHN")
+
+rwhn_res_gg <- rwhn_res %>% 
+  rbind(ora_res) %>% 
+  mutate(cluster = ifelse(method == "RWHN", cluster, NA),
+         value = ifelse(method == "RWHN", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#5bd670", high = "#def6e2",
+                      limits = c(1, 15)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text = element_text(size = 5),
+        axis.title = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank()
+  ) +
+  scale_x_discrete(#breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top", na.translate = FALSE) +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ora_res_gg <- ora_res %>% 
+  rbind(rwhn_res) %>% 
+  mutate(cluster = ifelse(method == "ORA", cluster, NA),
+         value = ifelse(method == "ORA", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#845bd6", high = "#e6def6",
+                      limits = c(0, 0.05)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm")
+  ) +
+  scale_x_discrete(#breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top", na.translate = FALSE) +
+  xlab("Cluster") +
+  ylab("GOBP") 
+##
+# TGF
+ora_tot <- enrichedTerms_tot$data %>% 
+  dplyr::select(term = Term,  value = Adjusted.P.value, cluster, ) %>% 
+  mutate(method = "ORA")
+rwhn_tot <- sighm_tot$data %>% 
+  dplyr::select(term = name, value = rank, cluster = seed) %>% 
+  mutate(method = "RWHN")
+
+rwhn_tot_gg <- rwhn_tot %>% 
+  rbind(ora_tot) %>% 
+  mutate(cluster = ifelse(method == "RWHN", cluster, NA),
+         value = ifelse(method == "RWHN", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#5bd670", high = "#def6e2",
+                      limits= c(1,15)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text = element_text(size = 5),
+        axis.title = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank()
+  ) +
+  scale_x_discrete(#breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top", na.translate = FALSE) +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ora_tot_gg <- ora_tot %>% 
+  rbind(rwhn_tot) %>% 
+  mutate(cluster = ifelse(method == "ORA", cluster, NA),
+         value = ifelse(method == "ORA", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#845bd6", high = "#e6def6",
+                      limits = c(0, 0.05)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm")
+  ) +
+  scale_x_discrete(#breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top", na.translate = FALSE) +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ggsave(
+  "results/figs/Ruprecht_RWHN_ORA_v2.tiff",
+  rwhn_tot_gg +
+    ora_tot_gg + 
+    rwhn_res_gg + 
+    ora_res_gg +
+    plot_layout(nrow = 1, guides= "collect"),
+  width = 7,
+  height = 6,
+  units = "in",
+  dpi = 300
+)
+
+ggsave(
+  "results/figs/Ruprecht_RWHN_ORA_v2.pdf",
+  rwhn_tot_gg +
+    ora_tot_gg + 
+    rwhn_res_gg + 
+    ora_res_gg +
+    plot_layout(nrow = 1, guides= "collect"),
+  width = 7,
+  height = 6,
+  units = "in",
+  dpi = 300
 )

@@ -5,6 +5,7 @@ library(igraph)
 library(enrichR)
 library(patchwork)
 library(ggplot2)
+library(ggraph)
 # From Bioconductor
 library(GOSemSim)
 library(AnnotationDbi)
@@ -19,258 +20,344 @@ source("src/functions/calculateRWHN.R")
 
 set.seed(123)
 
-# This data contains proteins that are known to be involved in broadly similar processes,
-# with sites that have functional annotations in PSP.
-# We then cluster the sites of those proteins based on their PSP annotation.
-# Then apply the alogirthm
-# We would expect sites with the same functional annotation to rank similar GOBP terms higher.
-# We can check this using the F-score, etc.
-data <- readRDS("data/PSP_Benchmarks.rds")
-hetNet <- lapply(data, function(i){
-  dat <- i %>%  
-    dplyr::select(-GO) %>% 
-    mutate(id_site = paste0(SYMBOL,
-                            "_",
-                            gsub("-.*",
-                                 "",
-                                 MOD_RSD)
-    )
-    ) %>% 
-    unique() %>% 
-    group_by(id_site) %>% 
-    filter(n() > 1)
-  
-  clustering <- dat$ON_PROCESS
-  names(clustering) <- dat$id_site
-  
-  hetNet <- constructHetNet(clustering = clustering)
-  
-  return(list(
-    hetNet = hetNet,
-    clustering = clustering)
-)
+data <- readr::read_tsv("data/Regulatory_sites.txt", skip = 2) %>% 
+  filter(!is.na(ON_PROCESS),
+         ORGANISM == "human",
+         grepl("-p", MOD_RSD)) %>% 
+  separate_rows(ON_PROCESS, sep = "; ") %>% 
+  mutate(id_site = paste0(GENE,
+                          "_",
+                          gsub("-.*",
+                               "",
+                               MOD_RSD))) %>% 
+  unique() 
+
+clustering <- data$ON_PROCESS
+names(clustering) <- data$id_site
+
+hetNet <- constructHetNet(clustering = clustering)
+
+saveRDS(hetNet, "results/data/PSP_benchmark_all_hetNet.rds")
+
+seed_l <- lapply(unique(clustering)[order(unique(clustering))], function(x){
+  c(names(clustering[clustering == x]))
 })
-saveRDS(hetNet, "PSP_benchmarks_hetNet.rds")
-
-rwhn <- lapply(hetNet, function(i){
-  
-  seed_l <- lapply(unique(i$clustering)[order(unique(i$clustering))], function(x){
-  c(names(i$clustering[i$clustering == x]))
+rwhn <- lapply(seed_l, function(s){
+  calculateRWHN(edgelists = hetNet$edgelists,
+                verti = hetNet$v,
+                seeds = s,
+                transitionProb = 0.7,
+                restart = 0.7,
+                weight_xy = 0.3,
+                weight_yz = 0.7,
+                eps = 1/10^12) %>%
+    filter(name %in% hetNet$v[hetNet$v$layer=="func",]$v)
 })
-  rwhn <- lapply(seed_l, function(s){
-    calculateRWHN(edgelists = i$hetNet$edgelists,
-                  verti = i$hetNet$v,
-                  seeds = s,
-                  transitionProb = 0.7,
-                  restart = 0.7,
-                  weight_xy = 0.3,
-                  weight_yz = 0.7,
-                  eps = 1/10^12) %>%
-      filter(name %in% i$hetNet$v[i$hetNet$v$layer=="func",]$v)
-  })
-})
-saveRDS(rwhn, "results/data/rwhn_benchmarks.rds")
+saveRDS(rwhn, "results/data/rwhn_all_benchmarks.rds")
+
+#####
+# Assessment
+#####
+rwhn <- readRDS("results/data/rwhn_all_benchmarks.rds")
+sighm <- heatmap_RWHN(rwhn, ylab = "GOBP")
+
+###SAVED BELOW
+# ora <- overrepresentationAnalysis(clustering = clustering,
+#                                   RWHN_sig = sighm,
+#                                   colours = c("#effff6","#168d49"))
+# saveRDS(ora, "data/PSP_allsites_ORA.rds")
+
+ora <- readRDS("data/PSP_allsites_ORA.rds")
 
 
-####
-rwhn <- readRDS("results/data/rwhn_benchmarks.rds")
-clustering <- lapply(readRDS("results/data/PSP_benchmarks_hetNet.rds"), 
-                     function(i){
-                       i$clustering
-                     }
-)
+psp_mapped <- readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>%
+  dplyr::select(ON_PROCESS, GOID) %>% 
+  unique() 
 
-rwhn <- sapply(names(rwhn), function(i) {
-  
-  x <- rwhn[[i]]
-  names(x) <- unique(clustering[[i]])[order(unique(clustering[[i]]))]
-  
-  return(x)
-  
-}, simplify = F, USE.NAMES = T)
-
-# tmp <- sapply(names(rwhn), function(i){
-# 
-#   rwhn_s <- rwhn[[i]]
-#   
-#   rwhn_df <- lapply(1:length(rwhn_s), function(x)
-#     mutate(rwhn_s[[x]], 
-#            seed = unique(clustering[[i]])[order(unique(clustering[[i]]))][x],
-#            rank = 1:nrow(rwhn_s[[x]])
-#     )
-#   ) %>% 
-#     do.call(cbind, .) 
-#   readr::write_csv(rwhn_df, paste0("results/data/PSP_Benchmark", i, "_rwhn_results.csv"))
-#   
-#   ## Filter top 5%
-#   sighm <- heatmap_RWHN(rwhn_output = rwhn[[i]], ylab = "GOBP Term") + ggtitle(i) 
-#   
-#   ggsave(filename = paste0("results/figs/PSP_Benchmark", i, "_rwhn_results.tiff"),
-#          plot = sighm,
-#          width = 182,
-#          height = 85,
-#          units = "mm")  
-#   
-#   ## ORA
-#   enrichedTerms <- overrepresentationAnalysis(clustering = clustering[[i]],
-#                                                   RWHN_sig = sighm,
-#                                                   colours = c("#effff6","#168d49"))
-#   
-#   ggsave(filename = paste0("results/figs/PSP_Benchmark", i, "_ORA_results.tiff"),
-#          plot = enrichedTerms,
-#          width = 100,
-#          height = 80,
-#          units = "mm")
-#   
-#   return(list(
-#     ORA = enrichedTerms$data,
-#     RWHN = sighm$data
-#     )
-#   )
-# }, simplify = F, USE.NAMES = T)
-
-
-tmp <- lapply(names(rwhn), function(i){
-  sighm <- heatmap_RWHN(rwhn_output = rwhn[[i]], ylab = "GOBP Term") + ggtitle(i) 
-
-  return(sighm$data)
-})
-names(tmp) <- names(rwhn)
-  
-true <- readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>% 
-  arrange(ON_PROCESS) 
-
-true_list <- true %>% 
-  group_by(ON_PROCESS) %>% 
-  group_split() %>% 
-  lapply(function(i){
-    x <- i %>% 
-      separate_rows(offspring, sep = ";")
-    unique(c(x$GOID, x$offspring))
-  })
-names(true_list) <- true$ON_PROCESS
-
+####################
+# Visualize as tree
+####################
 library(GO.db)
+library(ggraph)
+library(igraph)
 
-
-vis <- lapply(names(tmp), function(i){
-  pred <- tmp[[i]] %>% 
-    filter(seed %in% names(true_list)) %>% 
-    arrange(seed)
+psp_tree_sep <- lapply(unique(psp_mapped$GOID), function(i){
+  psp_offspring <- as.list(GOBPOFFSPRING)[[i]]
   
-  pred$GOID <- (AnnotationDbi::select(GO.db,
-                                      pred$name,
-                                      "GOID",
-                                      keytype = "TERM"))$GOID
+  dirchild <- data.frame(parent = i, 
+                         child = GOBPCHILDREN[[i]])
+  children <- lapply(psp_offspring, function(offspr){
+    data.frame(parent = offspr,
+               child = GOBPCHILDREN[[offspr]])
+  }) %>% 
+    bind_rows() %>% 
+    rbind(dirchild)
   
-  pred_list <- pred %>% 
-    group_by(seed) %>% 
-    group_split() %>% 
-    lapply(function(x){ 
-      ID <- x$GOID
-      
-      offspring <- do.call(c, as.list(GOBPOFFSPRING)[ID])
-      
-      return(c(ID, offspring))
-    })
-  
-  names(pred_list) <- paste0(unique(pred$seed))
-  
-  sapply(names(pred_list), function(k){ 
-    sapply(names(true_list)[names(true_list) %in% names(pred_list)], function(x){
-    tp <- sum(pred_list[[k]] %in% true_list[[x]])
-    fn <- sum(!true_list[[k]] %in% pred_list[[x]]) 
-    fp <- sum(!pred_list[[k]] %in% true_list[[x]])
-    
-    # recall <- TruePositives / (TruePositives + FalseNegatives)
-    recall <- tp / (tp + fn)
-    # precision <- TruePositives / (TruePositives + FalsePositives)
-    precision <- tp / (tp + fp)
-    # F-Measure = (2 * Precision * Recall) / (Precision + Recall)
-    F1 <- (2 * precision * recall) / (precision + recall)
-    
-    return(F1)
-    })
-  })
+  return(children)
 })
 
-lapply(vis, function(mat){
-  mat %>% 
-        as.data.frame() %>%
-        tibble::rownames_to_column("Predicted") %>%
-        pivot_longer(cols = -Predicted,
-                     names_to = "True",
-                     values_to = "Number_of_terms") %>%
-        ggplot(aes(x = Predicted, y = True, fill = Number_of_terms)) +
-        geom_tile() +
-        scale_fill_viridis_c(limits = c(0, 1)) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1))
-})
+psp_tree <- na.omit(bind_rows(psp_tree_sep))
 
-lapply(1:length(vis), function(i){
-  df <- vis[[i]] %>% 
-    as.data.frame() %>%
-    tibble::rownames_to_column("Predicted") %>%
-    pivot_longer(cols = -Predicted,
-                 names_to = "True",
-                 values_to = "F1")
-  
-  frames <- data.frame(Predicted = rownames(vis[[i]]), True = colnames(vis[[i]]))
-  
-  g <- ggplot(df, aes(x = Predicted, y = True, fill = F1)) +
-    geom_tile() +
-    scale_fill_viridis_c(limits = c(0, 1)) +
-    geom_tile(data=frames, aes(x = Predicted, y = True), size=1, fill=NA, colour="black") +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    ggtitle(names(data)[i])
-  
-  ggsave(paste0("results/figs/controls/benchmark_tests/", names(data)[i], ".tiff"),
-         g)
-  })
+RWHN_IDs <- AnnotationDbi::select(GO.db,
+                                  unique(sighm$data$name),
+                                  "GOID",
+                                  "TERM") %>% 
+  na.omit() %>% 
+  merge(sighm$data, by.x= "TERM", by.y = "name") %>% 
+  dplyr::select(TERM, GOID) %>% 
+  unique()
+ORA_IDS <- dplyr::select(ora$data, TERM = Term, GOID)
+
+psp_tree_v <- data.frame(name = 
+                           unique(
+                             c(
+                               psp_tree$parent,
+                               psp_tree$child
+                               )
+                             )
+) %>% 
+  na.omit() %>% 
+  mutate(inRes = ifelse(
+    name %in% RWHN_IDs$GOID &
+      name %in% ORA_IDS$GOID, "RWHN&ORA",
+    ifelse(name %in% RWHN_IDs$GOID, "RWHN",
+           ifelse(name %in% ORA_IDS$GOID, "ORA",
+                  "")
+    )
+  )
+  ) 
+
+nw <- simplify(
+  graph_from_data_frame(psp_tree, vertices = psp_tree_v)
+)
+
+gg <- ggraph(nw)
+
+levels <- gg$data %>%
+  group_by(y, inRes) %>% 
+  summarise(n = n()) %>% 
+  filter(inRes != "") %>%
+  pivot_wider(names_from = inRes, 
+              values_from = n) 
+levels$y_reorder <- levels$y[order(levels$y, decreasing = T)]
+levels_gg <- levels %>%
+  pivot_longer(cols = -c(y, y_reorder),
+               names_to = "inRes", 
+               values_to = "n") %>% 
+  ggplot(aes(x = as.factor(y_reorder), y = n, fill = inRes)) +
+  geom_bar(position = "stack", stat = "identity") +
+  scale_y_continuous(name = "Number of GO terms",
+                     n.breaks = 10) +
+  xlab("Hierachy level (distance from top level term)") +
+  #ylab("Number of GO terms") +
+  scale_fill_viridis_d(name = "Results") +
+  theme(#plot.background = element_blank(), 
+      #  panel.background = element_blank(),
+      #  panel.grid.major.x = element_blank(),
+       # panel.grid.major.y = element_line(color = "grey"),
+    legend.justification = c(1, 1),
+    legend.position = c(1, 1),
+    legend.key.size = unit(.25, "cm"),
+    legend.title = element_text(size = 5),
+    legend.text = element_text(size = 5), 
+    axis.text.y = element_text(size = 5),
+    legend.margin = margin(0,0,0,0, "cm"),
+    axis.text = element_text(size = 5),
+    axis.title = element_text(size = 5)
+  )
+ggsave("results/figs/controls/PSP_Hierachy_distribution.pdf",
+       levels_gg,
+       width = 3.33,
+       height = 2.5,
+       dpi = 300
+)
+ggsave("results/figs/controls/PSP_Hierachy_distribution.tiff",
+       levels_gg,
+       width = 3.33,
+       height = 2.5,
+       dpi = 300
+)
+
+### Distribution of terms
+psp_mapped <-
+  readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>%
+  separate_rows(offspring, sep = ";") %>%
+  pivot_longer(
+    cols = -c(parentProc, ON_PROCESS),
+    names_to = "parent",
+    values_to = "GOID"
+  ) %>%
+  #dplyr::select(-name) %>%
+  mutate(parent = ifelse(parent == "GOID", "parent", "offspring")) %>%
+  unique()
+
+psp_mapped$TERM <- AnnotationDbi::select(GO.db,
+                                         keys = psp_mapped$GOID,
+                                         columns = "TERM",
+                                         
+                                         keytype = "GOID")$TERM
+# Import PSP site > annotation
+psp_sites <- readr::read_tsv("data/Regulatory_sites.txt", skip = 2) %>% 
+  filter(!is.na(ON_PROCESS),
+         ORGANISM == "human",
+         grepl("-p", MOD_RSD)) %>% 
+  separate_rows(ON_PROCESS, sep = "; ") %>% 
+  mutate(id_site = paste0(GENE,
+                          "_",
+                          gsub("-.*",
+                               "",
+                               MOD_RSD))) %>% 
+  unique() 
+
+# Load GOBP hierachy
+offspring <- as.list(GOBPOFFSPRING)
+
+# Extract child/offspring terms of mapped PSP terms
+psp <-
+  offspring[unique(psp_mapped[psp_mapped$parent == "parent",]$GOID)]
+
+distr <- data.frame(
+  term = AnnotationDbi::select(
+    GO.db,
+    keys = names(psp),
+    columns = "TERM",
+    keytype = "GOID"
+  )$TERM,
+  n = sapply(psp, length)
+)
+distr_gg <- ggplot(distr, aes(x = term, y = n, fill = term)) +
+  geom_bar(stat = "identity") +
+  guides(fill = "none") +
+  coord_flip() +
+  theme(plot.title.position = "plot") +
+  ggtitle("Functional annotations in PSP",
+          subtitle = paste("Total annotations of 4013 sites =", sum(distr$n)))
 
 
-# #pred$GOID <- 
-# 
-# vis <-  lapply(names(tmp), function(i){
-#   pred <- tmp[[i]] %>% 
-#     filter(seed %in% names(true_list)) %>% 
-#     arrange(seed)
-#   
-#   pred$GOID <- (AnnotationDbi::select(GO.db,
-#                                       pred$name,
-#                                       "GOID",
-#                                       keytype = "TERM"))$GOID
-#   pred_list <- pred %>% 
-#     group_by(seed) %>% 
-#     group_split() %>% 
-#     lapply(function(x) x$GOID)
-#   
-#   names(pred_list) <- paste0(unique(pred$seed), "_PRED")
-#   
-#   #Filter true list for those terms found in clusters of benchmark data
-#   mat <- sapply(true_list[true$ON_PROCESS[true$ON_PROCESS %in% pred$seed]], function(k){ 
-#     sapply(pred_list, function(x){
-#       sum(x %in% k)
-#     })
-#   })
-#   
-#   
-#   g <- mat %>% 
-#     as.data.frame() %>% 
-#     tibble::rownames_to_column("Predicted") %>% 
-#     pivot_longer(cols = -Predicted,
-#                  names_to = "True",
-#                  values_to = "Number_of_terms") %>% 
-#     ggplot(aes(x = Predicted, y = True, fill = Number_of_terms)) +
-#     geom_tile() +
-#     scale_fill_viridis_b() +
-#     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-#     ggtitle(i)
-#   
-#   return(g)
-# })
-# 
-# lapply(vis, function(i) 
-#   ggsave(paste0("results/data/benchmark_tests/", i$labels$title, ".tiff"),
-#          i)
-# )
+## 2) Which GO branch are predicted functional annotations found in...
+# 2a) in the network?
+
+# 2b) ...in the predicted annotations?
+
+rwhn_tmp <- list(rwhn)
+
+  funcs <-
+    sighm$data %>%
+    dplyr::select(name) %>%
+    distinct()
+  
+  
+  funcs$GOID <- AnnotationDbi::select(GO.db,
+                                      keys = funcs$name,
+                                      columns = "GOID",
+                                      keytype = "TERM")$GOID
+rwhn_go_branch <- data.frame(
+    GOID = names(psp),
+    inMLNW = sapply(psp, function(x)
+      sum(funcs$GOID %in% x))
+  ) %>% 
+  mutate(TERM = AnnotationDbi::select(
+    GO.db,
+    keys = .$GOID,
+    columns = "TERM",
+    keytype = "GOID"
+  )$TERM) %>%
+  ggplot(aes(x = TERM, y = inMLNW, fill = TERM)) +
+  geom_bar(stat = "identity")  +
+  guides(fill = "none") +
+  coord_flip() +
+  ggtitle("RWHN output")
+distr_gg + rwhn_go_branch + plot_layout(widths = c(1,5))
+
+# 2c) ORA, PSP
+ora <- readRDS("data/PSP_allsites_ORA.rds")$data
+
+ora_go_branch <- data.frame(
+  GOID = names(psp),
+  inORA = sapply(psp, function(x)
+    sum(ora$GOID %in% x))
+) %>% 
+  mutate(TERM = AnnotationDbi::select(
+    GO.db,
+    keys = .$GOID,
+    columns = "TERM",
+    keytype = "GOID"
+  )$TERM) 
+
+psp_distrs <- 
+  data.frame(
+    TERM = distr$term,
+    n = distr$n,
+    source = "Phosphosite Plus"
+  ) %>% 
+  ggplot(aes(x = TERM, y = n, fill= TERM )) +
+  geom_bar(stat = "identity")  +
+  guides(fill = "none") +
+  facet_wrap(~  source, scales = "free_x") +
+  coord_flip() +
+  theme(plot.title = element_text(size = 5),
+        strip.text = element_text(size = 5),
+        legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5), 
+        axis.text.y = element_text(size = 5),
+        axis.text.x = element_text(size = 4.5, angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(size = 5),
+        legend.margin = margin(0,0,0,0, "cm")#,
+        #plot.title.position = "plot"
+  ) +
+  ylab("No. sites annotated") +
+  xlab("")
+
+
+psp_distrs_results <- rbind(
+  data.frame(
+    TERM = ora_go_branch$TERM,
+    n = ora_go_branch$inORA,
+    source = "ORA results"
+  ),
+  data.frame(
+    TERM = filter(rwhn_go_branch$data)$TERM,
+    n = filter(rwhn_go_branch$data)$inMLNW,
+    source = "RWHN results"
+  )
+) %>% 
+  mutate(source = factor(source, levels = c("ORA results", 
+                                            "RWHN results"))
+  ) %>% 
+  ggplot(aes(x = TERM, y = n, fill= TERM )) +
+  geom_bar(stat = "identity")  +
+  guides(fill = "none") +
+  facet_wrap(~  source, scales = "free_x") +
+  coord_flip() +
+  theme(plot.title = element_text(size = 5),
+        strip.text = element_text(size = 5),
+        legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 4.5, angle = 45, hjust = 1, vjust = 1),
+        axis.ticks.y = element_blank(),
+        axis.title = element_text(size = 5),
+        legend.margin = margin(0,0,0,0, "cm")#,
+        #plot.title.position = "plot"
+  ) +
+  ylab("No. GOBP Terms") +
+  xlab("")
+
+
+psp_distrs + 
+  psp_distrs_results +
+  plot_layout(widths = c(1,2)) +
+  theme(plot.margin = margin(0,0,0,0, "cm"))
+
+ggsave("results/figs/PSP_funcDistr.pdf",
+       psp_distrs + 
+         psp_distrs_results + 
+         plot_layout(widths = c(1,2)) +
+         plot_annotation(tag_levels = 'A') &
+         theme(plot.margin = margin(0.05,0.05,0.05,0.05, "cm"),
+               plot.tag = element_text(size = 6)),
+       width = 3.33,
+       height = 2.5,
+       dpi = 300)

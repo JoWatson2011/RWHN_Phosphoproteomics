@@ -154,23 +154,13 @@ readr::write_csv(rwhn_tgf_df, "results/data/CFR_tgf_rwhn_results.csv")
 
 
 ## EGF Filter top 5%
-sighm_egf <- heatmap_RWHN(rwhn_output = rwhn_egf, ylab = "GOBP Term")
+sighm_egf <- heatmap_RWHN(rwhn_output = rwhn_egf, ylab = "GOBP")
 
-ggsave(filename = "results/figs/rwhn_sig_CFR_egf.tiff",
-       plot = sighm_egf,
-       width = 182,
-       height = 85,
-       units = "mm")  
+
 
 ## tgf Filter top 5%
 
-sighm_tgf <- heatmap_RWHN(rwhn_tgf, "GOBP Term")
-
-ggsave(filename = "results/figs/rwhn_sig_CFR_tgf.tiff",
-       plot = sighm_tgf,
-       width = 182,
-       height = 79,
-       units = "mm")  
+sighm_tgf <- heatmap_RWHN(rwhn_tgf, ylab = "GOBP")
 
 
 ######################
@@ -182,27 +172,18 @@ enrichedTerms_egf <- overrepresentationAnalysis(clustering = egf_fcm$clustering,
                                                 RWHN_sig = sighm_egf,
                                                 colours = c("#effff6","#168d49"))
 
-ggsave(filename = "results/figs/standardORA_Francavilla_EGF.tiff",
-       plot = enrichedTerms_egf,
-       width = 100,
-       height = 80,
-       units = "mm")
 
 ## TGF
 enrichedTerms_tgf <- overrepresentationAnalysis(clustering = tgf_fcm$clustering,
-                                                RWHN_sig = sighm_tgf,
+                                                RWHN_sig = sighm_tgf, 
                                                 colours = c("#effff6","#168d49"))
 
-ggsave(filename = "results/figs/standardORA_Francavilla_TGF.tiff",
-       plot = enrichedTerms_tgf,
-       width = 100,
-       height = 80,
-       units = "mm")
 
+##################
 
-ggsave("results/figs/Francavilla_RWHN_ORA.pdf", 
+ggsave("results/figs/Francavilla_RWHN_ORA.pdf",
        sighm_egf + enrichedTerms_egf + sighm_tgf + enrichedTerms_tgf +
-         plot_layout(ncol = 2, 
+         plot_layout(ncol = 2,
                      widths= c(1.8, 1),
                      heights = c(1.3, 1),
                      guides=  "collect"),
@@ -211,163 +192,173 @@ ggsave("results/figs/Francavilla_RWHN_ORA.pdf",
        units = "mm",
        dpi = "print"
 )
-       
-####
-# F-SCORE
-####
 
-#RWHN
-rwhn_f1 <- lapply(list(
-  egf = list(cl = egf_fcm$clustering,
-             rwhn_output = sighm_egf$data),
-  tgf = list(cl = tgf_fcm$clustering,
-             rwhn_output = sighm_tgf$data)
-), function(i){
-  true_mapped <- readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>% 
-    arrange(ON_PROCESS) 
-  
-  true <- readr::read_tsv("data/Regulatory_sites.txt", skip = 2) %>% 
-    mutate(id_site = paste0(PROTEIN, "_", gsub("-.*", "", MOD_RSD))) %>% 
-    filter(ORGANISM == "human" &
-             grepl("-p", MOD_RSD),
-           !is.na(ON_PROCESS)) %>% 
-    separate_rows(ON_PROCESS, sep ="; ") %>% 
-    dplyr::select(id_site, ON_PROCESS) %>% 
-    distinct() %>% 
-    merge(data.frame(id_site = names(i$cl), cl = i$cl), by = "id_site") %>% 
-    merge(true_mapped[,c("ON_PROCESS", "GOID", "offspring")], by = "ON_PROCESS")
-  
-  true_list <- true %>% 
-    group_by(cl) %>% 
-    group_split() %>% 
-    lapply(function(i){
-      x <- i %>% 
-        separate_rows(offspring, sep = ";")
-      unique(c(x$GOID, x$offspring))
-    })
-  
-  library(GO.db)
-  
-  
-  pred <- i$rwhn_output %>% 
-    arrange(seed)
-  
-  pred$GOID <- (AnnotationDbi::select(GO.db,
-                                      pred$name,
-                                      "GOID",
-                                      keytype = "TERM"))$GOID
-  
-  pred_list <- pred %>% 
-    group_by(seed) %>% 
-    group_split() %>% 
-    lapply(function(x){ 
-      ID <- x$GOID
-      
-      offspring <- do.call(c, as.list(GOBPOFFSPRING)[ID])
-      
-      return(c(ID, offspring))
-    })
-  sapply(1:length(pred_list), function(k){ 
-    sapply(1:length(true_list), function(x){
-      tp <- sum(pred_list[[k]] %in% true_list[[x]])
-      fn <- sum(!true_list[[k]] %in% pred_list[[x]]) 
-      fp <- sum(!pred_list[[k]] %in% true_list[[x]])
-      
-      # recall <- TruePositives / (TruePositives + FalseNegatives)
-      recall <- tp / (tp + fn)
-      # precision <- TruePositives / (TruePositives + FalsePositives)
-      precision <- tp / (tp + fp)
-      # F-Measure = (2 * Precision * Recall) / (Precision + Recall)
-      F1 <- (2 * precision * recall) / (precision + recall)
-      
-      return(F1)
-    })
-  }) %>% 
-    as.data.frame() %>%
-    tibble::rownames_to_column("Predicted") %>%
-    pivot_longer(cols = -Predicted,
-                 names_to = "True",
-                 values_to = "F1") %>%
-    ggplot(aes(x = Predicted, y = True, fill = F1)) +
-    geom_tile() +
-    scale_fill_viridis_c(limits = c(0, 1)) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-})
+#######
+# Final visualisation for paper
+#######
 
-###ORA
-ora_f1 <- lapply(list(
-  egf = list(cl = egf_fcm$clustering,
-             ora_output = enrichedTerms_egf$data),
-  tgf = list(cl = tgf_fcm$clustering,
-             ora_output = enrichedTerms_tgf$data)
-), function(i){
-  
-  true_mapped <- readr::read_tsv("data/Regulatory_sites_GOmapped.tsv") %>% 
-    arrange(ON_PROCESS) 
-  
-  true <- readr::read_tsv("data/Regulatory_sites.txt", skip = 2) %>% 
-    mutate(id_site = paste0(PROTEIN, "_", gsub("-.*", "", MOD_RSD))) %>% 
-    filter(ORGANISM == "human" &
-             grepl("-p", MOD_RSD),
-           !is.na(ON_PROCESS)) %>% 
-    separate_rows(ON_PROCESS, sep ="; ") %>% 
-    dplyr::select(id_site, ON_PROCESS) %>% 
-    distinct() %>% 
-    merge(data.frame(id_site = names(i$cl), cl = i$cl), by = "id_site") %>% 
-    merge(true_mapped[,c("ON_PROCESS", "GOID", "offspring")], by = "ON_PROCESS")
-  
-  true_list <- true %>% 
-    group_by(cl) %>% 
-    group_split() %>% 
-    lapply(function(i){
-      x <- i %>% 
-        separate_rows(offspring, sep = ";")
-      unique(c(x$GOID, x$offspring))
-    })
-  
-  library(GO.db)
-  pred <- i$ora_output %>% 
-    arrange(cluster)
-  
-  pred_list <- pred %>% 
-    group_by(cluster) %>% 
-    group_split() %>% 
-    lapply(function(x){ 
-      ID <- x$GOID
-      
-      offspring <- do.call(c, as.list(GOBPOFFSPRING)[ID])
-      
-      return(c(ID, offspring))
-    })
-  
-  names(pred_list) <- unique(pred$cluster)
-  
-  true_list <- true_list[unique(pred$cluster)]
-  names(true_list) <- unique(pred$cluster)
-  sapply(names(pred_list), function(k){ 
-    sapply(names(true_list), function(x){
-      tp <- sum(pred_list[[k]] %in% true_list[[x]])
-      fn <- sum(!true_list[[k]] %in% pred_list[[x]]) 
-      fp <- sum(!pred_list[[k]] %in% true_list[[x]])
-      
-      # recall <- TruePositives / (TruePositives + FalseNegatives)
-      recall <- tp / (tp + fn)
-      # precision <- TruePositives / (TruePositives + FalsePositives)
-      precision <- tp / (tp + fp)
-      # F-Measure = (2 * Precision * Recall) / (Precision + Recall)
-      F1 <- (2 * precision * recall) / (precision + recall)
-      
-      return(F1)
-    })
-  }) %>% 
-    as.data.frame() %>%
-    tibble::rownames_to_column("Predicted") %>%
-    pivot_longer(cols = -Predicted,
-                 names_to = "True",
-                 values_to = "F1") %>%
-    ggplot(aes(x = Predicted, y = True, fill = F1)) +
-    geom_tile() +
-    scale_fill_viridis_c(limits = c(0, 1)) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-})
 
+ora_egf <- enrichedTerms_egf$data %>% 
+  dplyr::select(term = Term, value = Adjusted.P.value, cluster) %>% 
+  mutate(method = "ORA",
+         term = tolower(term))
+rwhn_egf <- sighm_egf$data %>% 
+  dplyr::select(term = name, value = rank, cluster = seed) %>% 
+  mutate(method = "RWHN",
+         term = tolower(term))
+
+rwhn_egf_gg <- rwhn_egf %>% 
+  rbind(ora_egf) %>% 
+  mutate(cluster = ifelse(method == "RWHN", cluster, NA),
+         value = ifelse(method == "RWHN", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#5bd670", high = "#def6e2",
+                      limits = c(1, 40)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text = element_text(size = 5),
+        axis.title = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank()
+  ) +
+  scale_x_discrete(breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top") +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ora_egf_gg <- ora_egf %>% 
+  rbind(rwhn_egf) %>% 
+  mutate(cluster = ifelse(method == "ORA", cluster, NA),
+         value = ifelse(method == "ORA", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#845bd6", high = "#e6def6",
+                      limits = c(0, 0.05)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm")
+  ) +
+  scale_x_discrete(breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top") +
+  xlab("Cluster") +
+  ylab("GOBP") 
+##
+# TGF
+ora_tgf <- enrichedTerms_tgf$data %>% 
+  dplyr::select(term = Term,  value = Adjusted.P.value, cluster, ) %>% 
+  mutate(method = "ORA",
+         term = tolower(term))
+rwhn_tgf <- sighm_tgf$data %>% 
+  dplyr::select(term = name, value = rank, cluster = seed) %>% 
+  mutate(method = "RWHN",
+         term = tolower(term))
+
+rwhn_tgf_gg <- rwhn_tgf %>% 
+  rbind(ora_tgf) %>% 
+  mutate(cluster = ifelse(method == "RWHN", cluster, NA),
+         value = ifelse(method == "RWHN", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#5bd670", high = "#def6e2",
+                      limits= c(1,40)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text = element_text(size = 5),
+        axis.title.x = element_text(size = 6),
+        axis.title.y = element_blank(),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank()
+  ) +
+  scale_x_discrete(breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top") +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ora_tgf_gg <- ora_tgf %>% 
+  rbind(rwhn_tgf) %>% 
+  mutate(cluster = ifelse(method == "ORA", cluster, NA),
+         value = ifelse(method == "ORA", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#845bd6", high = "#e6def6",
+                      limits = c(0, 0.05)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm")
+  ) +
+  scale_x_discrete(breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top") +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ggsave(
+  "results/figs/Francavilla_RWHN_ORA_v2.tiff",
+  rwhn_egf_gg +
+    ora_egf_gg + 
+    rwhn_tgf_gg + 
+    ora_tgf_gg +
+    plot_layout(nrow = 1, guides= "collect"),
+  width = 7,
+  height = 9,
+  units = "in",
+  dpi = 300
+)
+ggsave(
+  "results/figs/Francavilla_RWHN_ORA_v2.pdf",
+  rwhn_egf_gg +
+    ora_egf_gg + 
+    rwhn_tgf_gg + 
+    ora_tgf_gg +
+    plot_layout(nrow = 1, guides= "collect"),
+  width = 7,
+  height = 9,
+  units = "in",
+  dpi = 300
+)

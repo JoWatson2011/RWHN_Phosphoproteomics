@@ -3,6 +3,7 @@ overrepresentationAnalysis <- function(clustering,
                                        RWHN_sig = NULL,
                                        simplify = T,
                                        ylab = "GOBP Term", 
+                                       pval = 0.05,
                                        database = "GO_Biological_Process_2018"){
 
   
@@ -13,7 +14,7 @@ overrepresentationAnalysis <- function(clustering,
     
     enriched <- enrichr(cl_prots, databases = database) %>% 
       .[[1]] %>%
-      filter(Adjusted.P.value <= 0.05)  %>% 
+      filter(Adjusted.P.value <= pval)  %>% 
       mutate(cluster = i)
     return(enriched)
   }) %>% 

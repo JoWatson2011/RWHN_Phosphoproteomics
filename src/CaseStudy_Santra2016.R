@@ -137,6 +137,7 @@ mlnw <- constructHetNet(phosphoData = dplyr::select(sty_fin, -cluster),
                         modules = T,
                         stringPath = "data/STRINGexpmtgene_highconf.rds",
                         pval = 0.05)
+saveRDS(mlnw, "results/data/Santra_mlnw.rds")
 
 seed <- lapply(1:max(cl), function(i){
   names(cl[cl==i])
@@ -159,7 +160,7 @@ saveRDS(rwhn, "results/data/rwhn_santra.rds")
 #####
 rwhn <- readRDS("results/data/rwhn_santra.rds")
 names(rwhn) <- as.character(1:length(rwhn))
-sighm <- heatmap_RWHN(rwhn_output = rwhn,#[c("1", "4", "6")],
+sighm <- heatmap_RWHN(rwhn_output = rwhn[c("1", "4", "6")],
                       ylab = "GOBP Term")
 
 
@@ -168,40 +169,14 @@ ora <- overrepresentationAnalysis(clustering = cl[cl %in% c(1,4,6)],
                                   simplify= F,
                                   colours = c("#effff6","#168d49")
 )
-#
-rwhn_sim <- lapply(c("1", "4","6"), function(i){
-  v <- sighm$data[sighm$data$seed == i,]$name
-  v_goid <- na.omit(AnnotationDbi::select(GO.db, v, "GOID", "TERM")$GOID)
 
-  dat <- expand.grid(v_goid, v_goid) %>%
-    filter(Var1 != Var2)
-
-  semdata <- godata(ont = "BP")
-  dat_sim <- apply(dat, 1, function(i) mgoSim(i[1], i[2], semdata))
-
-  return(mean(dat_sim))
-})
-ora_sim <- lapply(c(1,4,6), function(i){
-  v <- as.character(ora$data[ora$data$cluster == i,]$name)
-  v_goid <- na.omit(AnnotationDbi::select(GO.db, v, "GOID", "TERM")$GOID)
-
-  dat <- expand.grid(v_goid, v_goid) %>%
-    filter(Var1 != Var2)
-
-  semdata <- godata(ont = "BP")
-  dat_sim <- apply(dat, 1, function(x) mgoSim(x[1],x[2], semdata))
-
-  return(mean(dat_sim))
-})
-
-#
-# ggsave("results/figs/Santra_Clusters.pdf",
-#   gg_cl +theme(plot.margin = unit(c(0,0,0,0), "cm")),
-#   width = 2,
-#   height = 3.3,
-#   units = "in",
-#   dpi = "print"
-# )
+ggsave("results/figs/Santra_Clusters.pdf",
+  gg_cl +theme(plot.margin = unit(c(0,0,0,0), "cm")),
+  width = 2,
+  height = 3.3,
+  units = "in",
+  dpi = "print"
+)
 ggsave("results/figs/Santra_RWHN.pdf",
        sighm +theme(plot.margin = unit(c(0,0,0,0), "cm"),
                     axis.text.y = element_text(size = 4.5)),
@@ -220,15 +195,94 @@ ggsave("results/figs/Santra_ORA.pdf",
        units = "in",
        dpi = "print"
 )
-#
-# #####
-# rwhn_kegg <- readRDS("results/data/rwhn_santra_kegg.rds")
-#
-# sighm_kegg <- heatmap_RWHN(rwhn_output = rwhn, ylab = "GOBP Term")
-#
-# ora_kegg <- overrepresentationAnalysis(clustering = cl,database = "KEGG_2019_Human",
-#                                   RWHN_sig = sighm,
-#                                   colours = c("#effff6","#168d49")
-# )
-#
-#
+
+##########
+# Final visualisation for paper
+##########
+ora <- ora$data %>% 
+  dplyr::select(term = Term,  value = Adjusted.P.value, cluster, ) %>% 
+  mutate(method = "ORA")
+rwhn <- sighm$data %>% 
+  dplyr::select(term = name, value = rank, cluster = seed) %>% 
+  mutate(method = "RWHN")
+
+rwhn_gg <- rwhn %>% 
+  rbind(ora) %>% 
+  mutate(cluster = ifelse(method == "RWHN", cluster, NA),
+         value = ifelse(method == "RWHN", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#5bd670", high = "#def6e2") +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text = element_text(size = 5),
+        axis.title = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank()
+  ) +
+  scale_x_discrete(#breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top", na.translate = F) +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ora_gg <- ora %>% 
+  rbind(rwhn) %>% 
+  mutate(cluster = ifelse(method == "ORA", cluster, NA),
+         value = ifelse(method == "ORA", value, NA)
+  ) %>% 
+  arrange(term) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#845bd6", high = "#e6def6",
+                      limits = c(0, 0.05)) +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 6),
+        legend.margin = margin(0,0,0,0, "cm")
+  ) +
+  scale_x_discrete(#breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top", na.translate = F) +
+  xlab("Cluster") +
+  ylab("GOBP") 
+
+ggsave(
+  "results/figs/Santra_RWHN_ORA_v2.tiff",
+    rwhn_gg + 
+    ora_gg +
+    plot_layout(nrow = 1, guides= "collect"),
+  width = 7,
+  height = 9,
+  units = "in",
+  dpi = 300
+)
+
+ggsave(
+  "results/figs/Santra_RWHN_ORA_v2.pdf",
+  rwhn_gg + 
+    ora_gg +
+    plot_layout(nrow = 1, guides= "collect"),
+  width = 7,
+  height = 9,
+  units = "in",
+  dpi = 300
+)

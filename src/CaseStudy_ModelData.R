@@ -1,241 +1,342 @@
-# From CRAN
-library(dplyr)
-library(tidyr)
-library(igraph)
-library(e1071)
-library(enrichR)
-library(patchwork)
-# From Bioconductor
+library(phosphoRWHN)
 library(Mfuzz)
-library(GOSemSim)
-library(AnnotationDbi)
+library(tidyverse)
 library(GO.db)
-# From src/
-source("src/functions/mfuzz-ggplot.R")
-source("src/functions/simplifyGO.R")
-source("src/functions/simplifyGOReqData.R")
-source("src/functions/constructHetNet.R")
-source("src/functions/calculateRWHN.R")
-source("src/functions/heatmap_RWHNsig.R")
-source("src/functions/overrepresentationAnalysis.R")
-source("src/functions/GOspecificity.R")
 
-prots <- data.frame(node = c("RAF1", "MAP2K1", "MAP2K2", "MAPK1", "MAPK3", "JUND", "DUSP6", "RPS6KA3"),
-                    level = c(1, 2, 2, 3, 3, 4, 5, 5),
-                    stringsAsFactors = F)
-### 
-# Phospho
-###
-model <- readr::read_csv("data/model_phospho.csv")
+model <- readr::read_csv("data/model_phospho.csv") %>% 
+  mutate(id = paste0(prot, "_", site)) %>% 
+  dplyr::select(id, t1:t5)
 
-fuzzyC <- function(tidydata, clus){
-  set.seed(1)
-  inputdata <- tidydata %>% 
-    tibble::remove_rownames() %>%
-    tibble::column_to_rownames(var = "id") # rownames must be id - see mfuzz.ggplot function
-  phospep <- new("ExpressionSet", 
-                 exprs = as.matrix(inputdata) )
-  phospep.z <- standardise(phospep)      #Avg expression of each peptide = 0, sd = 1
-  optimalM <- mestimate(phospep.z)   #set fuzzifier
-  # tmp  <- Dmin(phospep.z,m=optimalM,crange=seq(4,20,1),repeats=3,visu=TRUE)    #How many clusters? Note: stochastic
-  cl <- mfuzz(phospep.z, c = clus, m = optimalM)
-  a <- mFuzz.ggplot(exprs(phospep.z), cl, returnData = T)
-  a$g <- a$g + ggtitle(substr(a$exp$sample[1], 1, 6), clus) + theme_dark()
-  
-  return(list(data = phospep.z, exp = a$exp, g = a$g, clustering = cl$cluster))
-}
-
-dat <- model %>%
-  mutate(id = paste0(prot, "_", site)) %>%
-  dplyr::select(id, t1, t2, t3, t4, t5)
-
-pp <- fuzzyC(dat, cl = 5)
-
-phos <- lapply(1:max(pp$clustering), function(x){
-  xpnd <- pp$clustering[pp$clustering == x]
-  
-  return(expand.grid(names(xpnd), names(xpnd)) %>% 
-           mutate(cl = x))
-}) %>% 
-  do.call(rbind, .) %>% 
-  graph_from_data_frame(directed = F) %>% 
-  simplify() %>% 
-  igraph::as_data_frame(what = "edges") %>% 
-  dplyr::select(phos1 = 1, phos2 = 2)
-
-###
-# Phospho >> Prot
-###
-phos_prot <- graph_from_data_frame(phos, directed = F) %>%
-  igraph::as_data_frame("vertices") %>% 
-  mutate(prot = apply(., 1, function(x) strsplit(x[1], "_")[[1]][1])) %>% 
-  dplyr::select(phos = name, prot)
-
-###
-# Prot
-###
-STRING.expmt.gene <- readRDS("data/STRINGexpmtgene_lowconf.rds")
-prot <- STRING.expmt.gene[(STRING.expmt.gene$protein1 %in% prots$node) | (STRING.expmt.gene$protein2 %in% prots$node), c(2:3)] %>%
-  na.omit() %>% 
-  graph_from_data_frame(directed = F) %>% 
-  igraph::simplify(remove.multiple = F,remove.loops = T) %>% 
-  igraph::as_data_frame() %>% 
-  dplyr::select(prot1 = 1, prot2 = 2)
-prots <- c(prot$prot1, prot$prot2)
-
-###
-# Prot > Func
-###
-enrichedTerms <- enrichr(prots, databases = "GO_Biological_Process_2018") %>%
-  .$GO_Biological_Process_2018 %>%
-  filter(Adjusted.P.value < 0.05) %>%
-  separate(Term,
-           into = c("Term", "GOID"),
-           sep = " \\(",
-           extra = "drop") %>%
-  mutate(GOID = sub("\\)",
-                    "",
-                    GOID)) %>%
-  arrange(desc(Adjusted.P.value)) 
-
-# More Terms = Weaker Analysis!!
-keepID <- simplifyGO(GOID = enrichedTerms$GOID, simplifyData = simplifyGOReqData())
-
-prot_func <- enrichedTerms %>% 
-  filter(GOID %in% keepID) %>% 
-  separate_rows(Genes, sep = ";") %>%
-  dplyr::select(func = Term, prot = Genes, ID = GOID)
-
-###
-# Func
-###
-hsGO <- godata('org.Hs.eg.db', ont="BP")
-semSim <- expand.grid(unique(prot_func$ID), unique(prot_func$ID), stringsAsFactors = F)
-semSim$sim <- apply(semSim, 1, function(i) goSim(i[1], i[2], semData = hsGO, measure = "Wang"))
-func <- semSim %>% filter(sim < 1 & sim > 0.7)
-func$func1 <- (AnnotationDbi::select(GO.db,
-                                     keys = func$Var1, columns = "TERM",
-                                     keytype = "GOID"))$TERM
-func$func2 <- (AnnotationDbi::select(GO.db,
-                                     keys = func$Var2, columns = "TERM",
-                                     keytype = "GOID"))$TERM
-func <- dplyr::select(func, func1, func2) %>% na.omit %>% unique()
-
-###
-# Vertices
-###
-v <- rbind(
-  data.frame(v = unique(phos_prot$phos), layer = "phos", stringsAsFactors = F),
-  data.frame(v = unique(phos$phos1), layer = "phos", stringsAsFactors = F),
-  data.frame(v = unique(phos$phos2), layer = "phos", stringsAsFactors = F),
-  data.frame(v = unique(prot_func$prot), layer = "prot", stringsAsFactors = F),
-  data.frame(v = unique(phos_prot$prot), layer = "prot", stringsAsFactors = F),
-  data.frame(v = unique(prot$prot1), layer = "prot", stringsAsFactors = F),
-  data.frame(v = unique(prot$prot2), layer = "prot", stringsAsFactors = F),
-  data.frame(v = unique(prot_func$func), layer = "func", stringsAsFactors = F),
-  data.frame(v = unique(func$func1), layer = "func",  stringsAsFactors = F),
-  data.frame(v = unique(func$func2), layer = "func",  stringsAsFactors = F)
-) %>% 
-  unique()
-
-edgelists <- list(x = phos, y = prot, z = func,
-                  xy = phos_prot[,c("phos", "prot")], yx = phos_prot[,c("prot", "phos")],
-                  yz = prot_func[,c("prot", "func")], zy = prot_func[,c("func", "prot")]
-) %>% 
-  lapply(dplyr::rename, "to" = 2, "from" = 1)
-
-# Save heterogenous multilayer network
-saveRDS(list(v = v,
-             edgelists = edgelists,
-             fcm = pp),
-        "results/data/mlnw_model.rds")
+set.seed(1)
+inputdata <- model %>% 
+  tibble::remove_rownames() %>%
+  tibble::column_to_rownames(var = "id") 
+phospep <- new("ExpressionSet", 
+               exprs = as.matrix(inputdata))
+phospep.z <- standardise(phospep)      #Avg expression of each peptide = 0, sd = 1
+optimalM <- mestimate(phospep.z)   #set fuzzifier
+cl <- mfuzz(phospep.z, c = 5, m = optimalM)
 
 
-seed_l <- lapply(1:max(pp$clustering), function(i){
-  c(names(pp$clustering[pp$clustering == i]))
+# hetNet <- constructHetNet(clustering = cl$cluster, modules = F)
+# saveRDS(list(edgelists = hetNet$edgelists,
+#              v = hetNet$v,
+#              fcm = cl), 
+#         "results/data/mlnw_model.rds")
+
+# 2. Run RWHN, using sites in each cluster as seeds
+hetNet <- readRDS("results/data/mlnw_model.rds")
+seed_l <- lapply(1:max(cl$cluster), function(i){
+  c(names(cl$cluster[cl$cluster == i]))
 })
-
+set.seed(1)
 rwhn <- lapply(seed_l, function(s){
-  calculateRWHN(edgelists = edgelists,
-                #verti = v[v$v != "positive regulation of DNA-binding transcription factor activity",],
-                verti = v,
+  calculateRWHN(hetNet = hetNet,
                 seeds = s,
                 transitionProb = 0.7,
                 restart = 0.7,
-                weight_xy = 0.3,
-                weight_yz = 0.7,
-                eps = 1/10^12) %>%
-    filter(name %in% v[v$layer=="func",]$v)
+                eta_xy =  0.3,
+                eta_yz = 0.7,
+                eps = 1/10^12
+  )
 })
 
 saveRDS(rwhn, "results/data/rwhn_model.rds")
-
 #######
 # Export, Visualise, etc.
 #######
-rwhn <- readRDS("results/data/rwhn_model.rds")
+# rwhn <- readRDS("results/data/rwhn_model.rds")
+# 
+# rwhn_df <- lapply(1:length(rwhn), function(i)
+#   mutate(rwhn[[i]],
+#          seed = i,
+#          rank = 1:nrow(rwhn[[i]])
+#          )
+#   ) %>%
+#   do.call(cbind, .)
+# readr::write_csv(rwhn_df, "results/data/model_rwhn_results.csv")
 
-rwhn_df <- lapply(1:length(rwhn), function(i)
-  mutate(rwhn[[i]], 
-         seed = i,
-         rank = 1:nrow(rwhn[[i]])
-         )
-  ) %>% 
-  do.call(cbind, .) 
-readr::write_csv(rwhn_df, "results/data/model_rwhn_results.csv")
+sighm <-
+  heatmap_RWHN(rwhn,
+               database = "GOBP",
+               colours = c(low = "#ffe6e8", high = "#f74451"))
 
-sighm <- heatmap_RWHN(rwhn, ylab = "GOBP Term", colours = c(low = "#ffe6e8", high = "#f74451"))
-ggsave(filename = "results/figs/rwhn_sig_model.tiff",
-       plot = sighm,
-       width = 182,
-       height = 79,
-       units = "mm")  
-ggsave(filename = "results/figs/rwhn_sig_model_slim.tiff",
-       plot = sighm,
-       width = 100,
-       height = 80,
-       units = "mm")  
 
 
 ######################
 # Standard GO analysis
 ######################
 
-enrichedTerms <- overrepresentationAnalysis(clustering = pp$clustering,
-                                            colours = c("#effff6","#168d49")) 
+enrichedTerms <-overrepresentationAnalysis(clustering = cl$cluster, vis = T)
 
-
-
-ggsave(filename = "results/figs/standardORA_model.tiff",
-       plot = enrichedTerms,
-              width = 80,
-              height = 80,
-              units = "mm")
 #####################
+# 
+# ggsave("results/figs/model_RWHN_ORA.tiff",
+#   sighm + enrichedTerms +
+#     plot_layout(widths = c(2, 1)),
+#   width = 180,
+#   height = 80,
+#   units = "mm", 
+#   dpi = "print" 
+# )
+####
+# Visualisation of results in GO tree form
+# Added 30APR21
+####
 
-ggsave("results/figs/model_RWHN_ORA.tiff",
-  sighm + enrichedTerms +
-    plot_layout(widths = c(2, 1)),
-  width = 180,
-  height = 80,
-  units = "mm", 
-  dpi = "print" 
+library(GO.db)
+library(ggraph)
+library(igraph)
+
+RWHN_IDS <- AnnotationDbi::select(GO.db,
+                                  unique(sighm$data$name),
+                                  "GOID",
+                                  "TERM") %>% 
+  na.omit() %>% 
+  merge(sighm$data, by.x= "TERM", by.y = "name") %>% 
+  dplyr::select(TERM, GOID, seed)
+
+GO_RWHN_ancestors <- as.list(GOBPANCESTOR)[unique(RWHN_IDS$GOID)]
+# Is root node (all) in each?
+#map(GO_RWHN_ancestors, function(i) "all" %in% i)
+
+GO_RWHN_dirparents <- as.list(GOBPPARENTS)[unique(RWHN_IDS$GOID)] 
+GO_RWHN_dirparents <- map(names(GO_RWHN_dirparents), function(i)
+  data.frame(parent = GO_RWHN_dirparents[[i]], child = i)
+) %>% 
+  bind_rows()
+
+GO_RWHN_allparents <- map(GO_RWHN_ancestors, function(i){
+  listParents <- as.list(GOBPPARENTS)[i]
+  
+  dfParents <- map(na.omit(names(listParents)), function(x)
+    data.frame(parent = listParents[[x]], child = x)
+  ) %>% 
+    bind_rows()
+}) %>% 
+  bind_rows()
+
+
+GO_RWHN_comb_el <- rbind(GO_RWHN_allparents,
+                         GO_RWHN_dirparents)
+GO_RWHN_comb_v <- data.frame(name = unique(c(
+  GO_RWHN_comb_el$parent, GO_RWHN_comb_el$child
+))) %>%
+  left_join(RWHN_IDS, by = c("name" = "GOID")) %>%
+  group_by(name) %>%
+  summarise(seed = paste(seed, collapse = ","),
+            TERM = paste(unique(TERM), collapse = ",")) %>%
+  mutate(
+    seed = ifelse(seed == "NA", NA, seed),
+    TERM = ifelse(TERM == "NA", NA, TERM),
+    inRWHN = ifelse(seed == "", F, T),
+    isAll = ifelse(name == "all", name, NA)
+  )
+
+
+## ORA
+ORA_ID <- dplyr::select(enrichedTerms$data, TERM = Term, GOID, cluster)
+
+GO_ORA_ancestors <- as.list(GOBPANCESTOR)[unique(ORA_ID$GOID)]
+# Is root node (all) in each?
+#map(GO_ORA_ancestors, function(i) "all" %in% i)
+
+GO_ORA_dirparents <- as.list(GOBPPARENTS)[unique(ORA_ID$GOID)] 
+GO_ORA_dirparents <- map(names(GO_ORA_dirparents), function(i)
+  data.frame(parent = GO_ORA_dirparents[[i]], child = i)
+) %>% 
+  bind_rows()
+
+GO_ORA_allparents <- map(GO_ORA_ancestors, function(i){
+  listParents <- as.list(GOBPPARENTS)[i]
+  
+  dfParents <- map(na.omit(names(listParents)), function(x)
+    data.frame(parent = listParents[[x]], child = x)
+  ) %>% 
+    bind_rows()
+}) %>% 
+  bind_rows()
+
+
+GO_ORA_comb_el <- rbind(GO_ORA_allparents,
+                        GO_ORA_dirparents)
+GO_ORA_comb_v <- data.frame(name = unique(c(
+  GO_ORA_comb_el$parent, GO_ORA_comb_el$child
+))) %>%
+  left_join(ORA_ID, by = c("name" = "GOID")) %>%
+  group_by(name) %>%
+  summarise(cluster = paste(cluster, collapse = ","),
+            TERM = paste(unique(TERM), collapse = ",")) %>%
+  mutate(
+    cluster = ifelse(cluster == "NA", NA, cluster),
+    TERM = ifelse(TERM == "NA", NA, TERM),
+    inORA = ifelse(cluster == "", F, T),
+    label = ifelse(inORA == T, TERM, NA)
+  )
+
+
+# Combine
+GO_comb_el <- rbind(
+  GO_ORA_comb_el,
+  GO_RWHN_comb_el 
+) %>% distinct()
+GO_comb_v <- rbind(
+  (dplyr::select(GO_RWHN_comb_v, name, inRes = inRWHN, cluster = seed) %>% 
+     mutate(inRes = ifelse(inRes == T, "RWHN", NA))
+  ),
+  (dplyr::select(GO_ORA_comb_v, name, inRes = inORA, cluster) %>% 
+     mutate(inRes = ifelse(inRes == T, "ORA", NA))
+  )
+) %>% 
+  group_by(name) %>% 
+  summarise(inRes = paste(na.omit(inRes), collapse = "&")) %>%  
+  mutate(inRes = ifelse(inRes == "", "NA", inRes),
+         size = ifelse(inRes != "NA", 2, 1))
+
+nw <- simplify(
+  graph_from_data_frame(GO_comb_el, vertices = GO_comb_v)
 )
-####
-# comparison of how "specific" the GO terms from
-# RWHN or ORA are
-####
+
+gg <- ggraph(nw) +
+  geom_edge_bend(alpha = 0.25, color = "grey", edge_width = 0.2) +
+  geom_node_point(aes(color = inRes, size = inRes), alpha = 0.7) +
+  scale_color_manual(values = c("ORA" = "#845bd6", 
+                                "RWHN&ORA" = "#5bc7d6",
+                                "RWHN" = "#5bd670",
+                                "NA" = "grey"
+  )) +
+  scale_size_manual(values = c("ORA" = 3, 
+                               "RWHN&ORA" = 3,
+                               "RWHN" = 3,
+                               "NA" = 2
+  )) +
+  theme(legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5),
+        legend.position = "top",
+        panel.background = element_blank(),
+        plot.margin= margin(0,0,0,0, "pt"),
+        plot.background = element_blank())
+
+for(i in unique(gg$data$y)[unique(gg$data$y) != min(unique(gg$data$y))]){
+  gg <-  gg +
+    geom_hline(yintercept = i - 0.5, alpha = 0.2, colour = "#cba3cd") 
+}
+
+gg <- gg +
+  geom_text(data = data.frame(
+    x = -10, 
+    y = unique(gg$data$y)[order(unique(gg$data$y))][1:11],
+    label = unique(gg$data$y)[order(unique(gg$data$y))][1:11]
+  ), aes(x = x, y = y, label = label), colour = "black"
+  )
 
 
-sigTerms <- sighm$data[,c("name", "rank", "seed")]
+ora_with_nw <- left_join(enrichedTerms$data,
+                         gg$data[,c("y", "name")],
+                         by = c("GOID" = "name")) %>% 
+  dplyr::select(term = Term, GOID , value = Adjusted.P.value, cluster, y) %>% 
+  mutate(method = "ORA")
+rwhn_with_nw <- left_join(sighm$data, 
+                          AnnotationDbi::select(GO.db,
+                                                sighm$data$name,
+                                                "GOID",
+                                                "TERM"),
+                          by = c("name" = "TERM")) %>%
+  left_join(gg$data[,c("y", "name")], by = c("GOID"= "name")) %>% 
+  dplyr::select(term = name, GOID, value = rank, cluster = seed, y) %>% 
+  mutate(method = "RWHN")
 
-sigTerms$GOID <- AnnotationDbi::select(GO.db,
-                                       sigTerms$name, 
-                                       c("GOID", "TERM"),
-                                       "TERM")$GOID
-spec <-  GOspecific_vis(ORA_terms = enrichedTerms$data, RWHN_terms = sigTerms)
 
-lapply(1:length(spec), function(i){
-  ggsave(paste0("results/figs/controls/Model_termSpecificity_", i, ".tiff"), spec[[i]])
-})
+rwhn_with_nw_gg <- rwhn_with_nw %>% 
+  filter(!is.na(cluster)) %>%
+  rbind(ora_with_nw) %>% 
+  mutate(cluster = ifelse(method == "RWHN", cluster, NA),
+         value = ifelse(method == "RWHN", value, NA)
+  ) %>% 
+  filter(!is.na(y)) %>% 
+  arrange(desc(y)) %>% 
+  mutate(y = factor(y, levels = as.character(c(10:1)))) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(low = "#5bd670", high = "#def6e2") +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="Rank", reverse = T)) +
+  theme_minimal() +
+  theme(panel.grid = element_line(size = 0.5),
+        legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5, angle = 45),
+        legend.position = "top",
+        axis.text = element_text(size = 5),
+        axis.title = element_text(size = 5),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank(),
+        panel.spacing = unit(0.2, "mm"), 
+        panel.border = element_rect(color = "grey", fill = "transparent")
+  ) +
+  scale_x_discrete(breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top") +
+  xlab("Cluster") +
+  ylab("GOBP") +
+  facet_grid(y ~., scales = "free", space = "free")
 
+
+ora_with_nw_gg <-  ora_with_nw %>% 
+  filter(!is.na(cluster) | !is.na(term)) %>%
+  rbind(rwhn_with_nw) %>% 
+  mutate(cluster = ifelse(method == "ORA", cluster, NA),
+         value = ifelse(method == "ORA", value, NA)
+  ) %>% 
+  filter(!is.na(y)) %>% 
+  arrange(desc(y)) %>% 
+  mutate(y = factor(y, levels = as.character(c(10:1)))) %>% 
+  ggplot(aes(y = term,
+             x = as.factor(cluster)
+  )
+  ) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient(breaks = seq(0, 0.05, 0.01), limits = c(0, 0.05),
+                      low = "#845bd6", high = "#e6def6") +
+  guides(color = FALSE,
+         fill = guide_colourbar(title="FDR")) +
+  theme_minimal() +
+  theme(panel.grid = element_line(size = 0.5),
+    legend.key.size = unit(.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 5, angle = 45, hjust = 1),
+        legend.position = "top",
+        axis.text.x = element_text(size = 5),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 5),
+        #      panel.background = element_rect(fill = "white"),
+        legend.margin = margin(0,0,0,0, "cm"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank(),
+        panel.spacing = unit(0.2, "mm"), 
+        panel.border = element_rect(color = "grey", fill = "transparent"),
+        plot.margin = margin(0,0,0,0,"mm")
+        
+  ) +
+  scale_x_discrete(breaks = factor(c(1:5)), limits = factor(c(1:5)), 
+                   position = "top") +
+  xlab("Cluster") +
+  ylab("GOBP") +
+  facet_grid(as.factor(y) ~., scales = "free", space = "free") 
+
+library(patchwork)
+pw <- rwhn_with_nw_gg + 
+  ora_with_nw_gg +
+  gg +
+  plot_layout(
+    widths = c(1,1,3)
+  )
+pw
+
+ggsave("results/figs/Model_with_nw.pdf",
+       pw, dpi = 300, width = 7, height =5.8, units = "in")
